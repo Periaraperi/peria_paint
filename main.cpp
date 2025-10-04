@@ -1,6 +1,12 @@
-#include <iostream>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
-int main()
+#include "app.hpp"
+
+int main([[maybe_unused]]int argc, [[maybe_unused]]char** argv)
 {
-    std::cout << "Hello Paint!\n";
+    peria::application app {peria::application_settings{"peria_paint", 800, 600, true}};
+    if (app.initialized()) {
+        app.run();
+    }
 }
