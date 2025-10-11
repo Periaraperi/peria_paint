@@ -2,16 +2,22 @@
 
 #include <SDL3/SDL_video.h>
 
-#include <memory>
-
-#include "input_manager.hpp"
+#include "graphics/gl_entities.hpp"
+#include "graphics/shader.hpp"
 
 namespace peria {
+
+struct application_settings {
+    const char* title {"application"};
+    int window_width  {800};
+    int window_height {600};
+    bool resizable {false};
+};
 
 namespace sdl {
 
 struct sdl_initializer {
-    sdl_initializer() noexcept;
+    sdl_initializer(const application_settings& settings) noexcept;
 
     sdl_initializer(const sdl_initializer&) = delete;
     sdl_initializer& operator=(const sdl_initializer&) = delete;
@@ -21,24 +27,12 @@ struct sdl_initializer {
 
     ~sdl_initializer();
 
-    bool initialized {};
+    bool initialized {true};
+
+    SDL_Window* window {nullptr};
+    SDL_GLContext context {nullptr};
 };
 
-struct sdl_window_deleter {
-    void operator()(SDL_Window* window) const noexcept;
-};
-
-struct gl_context_deleter {
-    void operator()(SDL_GLContext context) const noexcept;
-};
-
-};
-
-struct application_settings {
-    const char* title {"application"};
-    int window_width  {800};
-    int window_height {600};
-    bool resizable {false};
 };
 
 class application {
@@ -56,11 +50,18 @@ public:
     void run();
 
 private:
-    sdl::sdl_initializer sdl_initializer_;
-    std::unique_ptr<SDL_Window, sdl::sdl_window_deleter> window_ {nullptr};
-    std::unique_ptr<SDL_GLContextState, sdl::gl_context_deleter> context_ {nullptr};
-
     application_settings app_settings_;
+    sdl::sdl_initializer sdl_initializer_;
+
+    void update();
+    void draw();
+
+    // gl entities.
+    gl::shader shader;
+    gl::vertex_array vao;
+    gl::named_buffer vbo;
+    gl::named_buffer ibo;
+
 };
 
 }

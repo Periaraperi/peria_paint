@@ -6,15 +6,19 @@
 #include <print>
 #include <utility>
 
+#include "input_manager.hpp"
+#include "graphics/graphics.hpp"
+
 namespace peria {
 
 namespace sdl {
 
-sdl_initializer::sdl_initializer() noexcept
+sdl_initializer::sdl_initializer(const application_settings& settings) noexcept
 {
+    std::println("Initializing SDL");
     initialized = SDL_Init(SDL_INIT_VIDEO);
     if (!initialized) {
-        std::print("{}\n", SDL_GetError());
+        std::println("{}\n", SDL_GetError());
         return;
     }
 
@@ -24,60 +28,90 @@ sdl_initializer::sdl_initializer() noexcept
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-};
 
-sdl_initializer::~sdl_initializer()
-{
-    std::print("Shutting down SDL3\n");
-    SDL_Quit();
-}
-
-void sdl_window_deleter::operator()(SDL_Window* window) const noexcept
-{ std::print("Destroying SDL_Window\n"); SDL_DestroyWindow(window); }
-
-void gl_context_deleter::operator()(SDL_GLContext context) const noexcept
-{ std::print("Destroying SDL_GLContext\n"); SDL_GL_DestroyContext(context); }
-
-} // end sdl
-
-application::application(application_settings&& settings)
-    :app_settings_{std::move(settings)}
-{
-    std::print("application construction\n");
-    
     auto window_flags {SDL_WINDOW_OPENGL};
-    if (app_settings_.resizable) window_flags |= SDL_WINDOW_RESIZABLE;
-    window_ = std::unique_ptr<SDL_Window, sdl::sdl_window_deleter>(
-        SDL_CreateWindow(app_settings_.title, 
-                         app_settings_.window_width, 
-                         app_settings_.window_height, 
-                         window_flags)
-    );
-    if (window_ == nullptr) {
-        std::print("SDL Window failed. {}\n", SDL_GetError());
+    if (settings.resizable) window_flags |= SDL_WINDOW_RESIZABLE;
+    window = SDL_CreateWindow(settings.title, 
+                         settings.window_width, 
+                         settings.window_height, 
+                         window_flags);
+    if (window == nullptr) {
+        initialized = false;
+        std::println("SDL Window failed. {}", SDL_GetError());
         return;
     }
-    context_ = std::unique_ptr<SDL_GLContextState, sdl::gl_context_deleter>(
-        SDL_GL_CreateContext(window_.get())
-    );
-    if (context_ == nullptr) {
-        std::print("SDL GL Context failed. {}\n", SDL_GetError());
+    context = SDL_GL_CreateContext(window);
+    if (context == nullptr) {
+        initialized = false;
+        std::println("SDL GL Context failed. {}", SDL_GetError());
         return;
     }
 
     if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
-        std::print("GL loader failed\n");
+        initialized = false;
+        std::println("GL loader failed");
         return;
     }
 
+    std::println("Successfully initialized SDL, SDL_Window, SDL_GLContext, and GLAD");
+};
+
+sdl_initializer::~sdl_initializer()
+{
+    std::println("Shutting down SDL3");
+    SDL_DestroyWindow(window);
+    SDL_GL_DestroyContext(context);
+    SDL_Quit();
+}
+
+} // end sdl
+
+application::application(application_settings&& settings)
+    :app_settings_{std::move(settings)},
+     sdl_initializer_{app_settings_},
+     shader{"./assets/shaders/default.vert", "./assets/shaders/default.frag"}
+{
+    if (!sdl_initializer_.initialized) return;
+    std::println("application construction");
+
     input_manager::initialize();
+
+    {
+        //TODO: come back to these settings later
+        //glEnable(GL_BLEND);
+        //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        //glEnable(GL_DEPTH_TEST);
+        //glEnable(GL_STENCIL_TEST);
+        //glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
+        peria::graphics::set_vsync(true);
+        peria::graphics::set_relative_mouse(sdl_initializer_.window, false);
+        peria::graphics::set_screen_dimensions(settings.window_width, settings.window_height);
+    }
+    // GL entities here
+    {
+        std::array<gl::vertex<gl::pos2>, 4> data {{
+            {{-0.5f, -0.5f}},
+            {{-0.5f,  0.5f}},
+            {{ 0.5f,  0.5f}},
+            {{ 0.5f, -0.5f}},
+        }};
+        std::array<u32, 6> indices {0,1,2, 0,2,3};
+
+        graphics::buffer_upload_data(vbo, data, GL_STATIC_DRAW);
+        graphics::buffer_upload_data(ibo, indices, GL_STATIC_DRAW);
+
+        graphics::vao_configure<gl::pos2>(vao, vbo, 0);
+        graphics::vao_connect_ibo(vao, ibo);
+    }
+
 }
 
 application::~application()
 {
     input_manager::shutdown();
 
-    std::print("Shutting down application\n");
+    std::println("Shutting down application");
 }
 
 bool application::initialized() const noexcept
@@ -90,7 +124,6 @@ void application::run()
     auto input_manager_ {input_manager::instance()};
 
     while (running) {
-
         input_manager_->update_mouse();
 
         // Poll for events, and react to window resize and mouse movement events here
@@ -102,19 +135,41 @@ void application::run()
             else if (ev.type == SDL_EVENT_WINDOW_RESIZED) {
                 app_settings_.window_width = ev.window.data1;
                 app_settings_.window_height = ev.window.data2;
+                peria::graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
+                peria::graphics::set_screen_dimensions(app_settings_.window_width, app_settings_.window_height);
+            }
+            else if (ev.type == SDL_EVENT_MOUSE_MOTION) {
+                peria::graphics::set_relative_motion(ev.motion.xrel, -ev.motion.yrel);
             }
         }
 
-        if (!SDL_GL_SwapWindow(window_.get())) {
-            std::print("SDL_GL_SwapWindow failed\n");
+        update();
+
+        draw();
+
+        if (!SDL_GL_SwapWindow(sdl_initializer_.window)) {
+            std::println("SDL_GL_SwapWindow failed");
             running = false;
             break;
         }
 
         input_manager_->update_prev_state();
 
-        SDL_Delay(1); // artifical delay of 1ms to not go bonkers
+        SDL_Delay(1); // artificial delay of 1ms to not go bonkers
     }
+}
+
+void application::update()
+{
+}
+
+void application::draw()
+{
+    graphics::clear_buffer_all(0, graphics::INDIGO, 1.0f, 0);
+    
+    shader.use_shader();
+    graphics::bind_vertex_array(vao);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 }
 
 }

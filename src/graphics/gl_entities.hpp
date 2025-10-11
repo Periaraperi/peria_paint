@@ -1,8 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
+#include <algorithm>
+#include <type_traits>
 
-namespace peria::graphics {
+namespace peria::gl {
 
 struct vertex_array {
     vertex_array() noexcept;
@@ -69,5 +72,42 @@ struct frame_buffer {
 
     std::uint32_t id;
 };
+
+template <typename T, int D>
+struct attr {
+    static_assert(std::is_same_v<T, float> && D >= 1 && D <= 4, "Attribute must have type float and contain 1, 2, 3, or 4 elements");
+    using type = T;
+    static constexpr int elem_count {D};
+    static constexpr std::size_t bytes {sizeof(T)*D};
+    std::array<T, D> data;
+};
+
+template <typename... Ts>
+struct vertex {
+    static constexpr std::size_t stride {(Ts::bytes + ...)};
+    std::array<std::common_type_t<typename Ts::type...>, (Ts::elem_count + ...)> arr;
+    constexpr vertex() noexcept = default;
+    constexpr vertex(const Ts&... attrs) 
+    {
+        std::size_t offset {};
+        ((std::copy(attrs.data.begin(), attrs.data.end(), arr.begin()+offset), offset += Ts::elem_count), ...);
+    }
+};
+
+template <typename T>
+struct is_vertex : std::false_type {};
+
+template <typename... Ts>
+struct is_vertex<vertex<Ts...>> : std::true_type {};
+
+template <typename T>
+constexpr inline bool is_vertex_v = is_vertex<T>::value;
+
+using pos2          = attr<float, 2>;
+using pos3          = attr<float, 3>;
+using pos4          = attr<float, 4>;
+using normal        = attr<float, 3>;
+using texture_coord = attr<float, 2>;
+using color4        = attr<float, 4>;
 
 }

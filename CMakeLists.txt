@@ -13,6 +13,8 @@ set(SRCS
     ${SRC_DIR}/app.cpp
     ${SRC_DIR}/input_manager.cpp
     ${SRC_DIR}/graphics/gl_entities.cpp
+    ${SRC_DIR}/graphics/shader.cpp
+    ${SRC_DIR}/graphics/graphics.cpp
 
     ${EXTERNAL_DIR}/glad/src/glad.c
 )
