@@ -62,6 +62,8 @@ private:
     gl::named_buffer vbo;
     gl::named_buffer ibo;
 
+    math::mat4f proj;
+
 };
 
 }

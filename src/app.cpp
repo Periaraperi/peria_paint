@@ -86,7 +86,8 @@ application::application(application_settings&& settings)
 
         peria::graphics::set_vsync(true);
         peria::graphics::set_relative_mouse(sdl_initializer_.window, false);
-        peria::graphics::set_screen_dimensions(settings.window_width, settings.window_height);
+        peria::graphics::set_screen_dimensions(app_settings_.window_width, app_settings_.window_height);
+        proj = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
     }
     // GL entities here
     {
@@ -135,8 +136,9 @@ void application::run()
             else if (ev.type == SDL_EVENT_WINDOW_RESIZED) {
                 app_settings_.window_width = ev.window.data1;
                 app_settings_.window_height = ev.window.data2;
-                peria::graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
-                peria::graphics::set_screen_dimensions(app_settings_.window_width, app_settings_.window_height);
+                graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
+                graphics::set_screen_dimensions(app_settings_.window_width, app_settings_.window_height);
+                proj = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
             }
             else if (ev.type == SDL_EVENT_MOUSE_MOTION) {
                 peria::graphics::set_relative_motion(ev.motion.xrel, -ev.motion.yrel);
@@ -166,8 +168,15 @@ void application::update()
 void application::draw()
 {
     graphics::clear_buffer_all(0, graphics::INDIGO, 1.0f, 0);
+
+    const auto w {static_cast<float>(app_settings_.window_width)};
+    const auto h {static_cast<float>(app_settings_.window_height)};
+
+    math::mat4f model {math::translate(w*0.5f, h*0.5f, 0.0f)*
+                       math::scale(100.0f, 100.0f, 1.0f)};
     
     shader.use_shader();
+    shader.set_mat4("u_mvp", proj*model);
     graphics::bind_vertex_array(vao);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 }

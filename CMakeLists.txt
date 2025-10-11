@@ -15,6 +15,7 @@ set(SRCS
     ${SRC_DIR}/graphics/gl_entities.cpp
     ${SRC_DIR}/graphics/shader.cpp
     ${SRC_DIR}/graphics/graphics.cpp
+    ${SRC_DIR}/math/matrix.cpp
 
     ${EXTERNAL_DIR}/glad/src/glad.c
 )
