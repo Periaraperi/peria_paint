@@ -17,7 +17,7 @@ struct application_settings {
 namespace sdl {
 
 struct sdl_initializer {
-    sdl_initializer(const application_settings& settings) noexcept;
+    explicit sdl_initializer(const application_settings& settings) noexcept;
 
     sdl_initializer(const sdl_initializer&) = delete;
     sdl_initializer& operator=(const sdl_initializer&) = delete;
@@ -62,7 +62,21 @@ private:
     gl::named_buffer vbo;
     gl::named_buffer ibo;
 
-    math::mat4f proj;
+    gl::vertex_array canvas_vao;
+    gl::named_buffer canvas_vbo;
+
+    math::mat4f window_proj;
+
+    struct canvas {
+        gl::shader shader;
+        gl::texture2d texture;
+        gl::sampler sampler;
+        gl::frame_buffer buffer;
+
+        int tex_w {};
+        int tex_h {};
+        math::mat4f proj;
+    } canvas;
 
 };
 

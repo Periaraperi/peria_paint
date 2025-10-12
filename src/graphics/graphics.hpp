@@ -90,4 +90,8 @@ void clear_buffer_color(u32 fbo, const color& color) noexcept;
 // clears frame buffer's depth attachment.
 void clear_buffer_depth(u32 fbo, float depth_value) noexcept;
 
+gl::texture2d create_texture2d(int w, int h, u32 internal_format) noexcept;
+
+gl::sampler create_sampler(int min_filter, int mag_filter, int wrap_s, int wrap_t, int wrap_r, const color& border_color=WHITE) noexcept;
+
 }

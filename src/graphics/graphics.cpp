@@ -92,4 +92,27 @@ void clear_buffer_color(u32 fbo, const color& color) noexcept
 void clear_buffer_depth(u32 fbo, float depth_value) noexcept
 { glClearNamedFramebufferfv(fbo, GL_DEPTH, 0, &depth_value); }
 
+gl::texture2d create_texture2d(int w, int h, u32 internal_format) noexcept
+{
+    gl::texture2d texture;
+    glTextureStorage2D(texture.id, 1, internal_format, w, h);
+    return texture;
+}
+gl::sampler create_sampler(int min_filter, int mag_filter, int wrap_s, int wrap_t, int wrap_r, const color& border_color) noexcept
+{
+    gl::sampler sampler;
+    glSamplerParameteri(sampler.id, GL_TEXTURE_MIN_FILTER, min_filter);
+    glSamplerParameteri(sampler.id, GL_TEXTURE_MAG_FILTER, mag_filter);
+    glSamplerParameteri(sampler.id, GL_TEXTURE_WRAP_S, wrap_s);
+    glSamplerParameteri(sampler.id, GL_TEXTURE_WRAP_T, wrap_t);
+    glSamplerParameteri(sampler.id, GL_TEXTURE_WRAP_R, wrap_r);
+    if (wrap_s == GL_CLAMP_TO_BORDER || wrap_t == GL_CLAMP_TO_BORDER || wrap_r == GL_CLAMP_TO_BORDER) {
+        const auto& [r, g, b, _] {border_color};
+        const std::array clr {r, g, b};
+        glSamplerParameterfv(sampler.id, GL_TEXTURE_BORDER_COLOR, clr.data());
+    }
+    return sampler;
+}
+
+
 }

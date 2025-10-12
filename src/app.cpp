@@ -69,7 +69,10 @@ sdl_initializer::~sdl_initializer()
 application::application(application_settings&& settings)
     :app_settings_{std::move(settings)},
      sdl_initializer_{app_settings_},
-     shader{"./assets/shaders/default.vert", "./assets/shaders/default.frag"}
+     shader{"./assets/shaders/default.vert", "./assets/shaders/default.frag"},
+     canvas{gl::shader{"./assets/shaders/canvas.vert", "./assets/shaders/canvas.frag"},
+            gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)},
+            gl::sampler{graphics::create_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 400, 300, {}}
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
@@ -87,7 +90,7 @@ application::application(application_settings&& settings)
         peria::graphics::set_vsync(true);
         peria::graphics::set_relative_mouse(sdl_initializer_.window, false);
         peria::graphics::set_screen_dimensions(app_settings_.window_width, app_settings_.window_height);
-        proj = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
+        window_proj = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
     }
     // GL entities here
     {
@@ -104,6 +107,27 @@ application::application(application_settings&& settings)
 
         graphics::vao_configure<gl::pos2>(vao, vbo, 0);
         graphics::vao_connect_ibo(vao, ibo);
+
+        std::array<gl::vertex<gl::pos2, gl::texture_coord>, 4> canvas_data {{
+            {{-0.5f, -0.5f}, {0.0f, 0.0f}},
+            {{-0.5f,  0.5f}, {0.0f, 1.0f}},
+            {{ 0.5f,  0.5f}, {1.0f, 1.0f}},
+            {{ 0.5f, -0.5f}, {1.0f, 0.0f}},
+        }};
+
+        graphics::buffer_upload_data(canvas_vbo, canvas_data, GL_STATIC_DRAW);
+
+        graphics::vao_configure<gl::pos2, gl::texture_coord>(canvas_vao, canvas_vbo, 0);
+        graphics::vao_connect_ibo(canvas_vao, ibo);
+
+        glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
+        const auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
+        }
+
+        canvas.shader.set_int("u_canvas_texture", 0);
+        canvas.proj = math::get_ortho_projection(0.0f, static_cast<float>(canvas.tex_w), 0.0f, static_cast<float>(canvas.tex_h));
     }
 
 }
@@ -117,6 +141,8 @@ application::~application()
 
 bool application::initialized() const noexcept
 { return sdl_initializer_.initialized; }
+
+static bool done {false};
 
 void application::run()
 {
@@ -138,7 +164,7 @@ void application::run()
                 app_settings_.window_height = ev.window.data2;
                 graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
                 graphics::set_screen_dimensions(app_settings_.window_width, app_settings_.window_height);
-                proj = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
+                window_proj = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
             }
             else if (ev.type == SDL_EVENT_MOUSE_MOTION) {
                 peria::graphics::set_relative_motion(ev.motion.xrel, -ev.motion.yrel);
@@ -167,17 +193,38 @@ void application::update()
 
 void application::draw()
 {
-    graphics::clear_buffer_all(0, graphics::INDIGO, 1.0f, 0);
-
     const auto w {static_cast<float>(app_settings_.window_width)};
     const auto h {static_cast<float>(app_settings_.window_height)};
 
+    const auto cw {static_cast<float>(canvas.tex_w)};
+    const auto ch {static_cast<float>(canvas.tex_h)};
+
+    if (!done) {
+        std::println("DRAWING TO OFFSCREEN BUFFER ONCE, AND REUSING IT LATER");
+        graphics::bind_frame_buffer(canvas.buffer);
+        graphics::set_viewport(0, 0, canvas.tex_w, canvas.tex_h);
+        graphics::clear_buffer_color(canvas.buffer.id, graphics::AQUA);
+        graphics::bind_vertex_array(vao);
+
+        math::mat4f model {math::translate(cw*0.5f, ch*0.5f, 0.0f)*
+                           math::scale(cw*0.25f, ch*0.25f, 1.0f)};
+        shader.use_shader();
+        shader.set_mat4("u_mvp", canvas.proj*model);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        done = true;
+    }
+
+    graphics::bind_frame_buffer_default();
+    graphics::clear_buffer_all(0, graphics::INDIGO, 1.0f, 0);
+    graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
+
     math::mat4f model {math::translate(w*0.5f, h*0.5f, 0.0f)*
-                       math::scale(100.0f, 100.0f, 1.0f)};
-    
-    shader.use_shader();
-    shader.set_mat4("u_mvp", proj*model);
-    graphics::bind_vertex_array(vao);
+                       math::scale(cw, ch, 1.0f)};
+
+    graphics::bind_vertex_array(canvas_vao);
+    canvas.shader.use_shader();
+    canvas.shader.set_mat4("u_mvp", window_proj*model);
+    graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 }
 
