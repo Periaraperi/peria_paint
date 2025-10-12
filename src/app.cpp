@@ -70,6 +70,7 @@ application::application(application_settings&& settings)
     :app_settings_{std::move(settings)},
      sdl_initializer_{app_settings_},
      shader{"./assets/shaders/default.vert", "./assets/shaders/default.frag"},
+     circle_shader{"./assets/shaders/circle.vert", "./assets/shaders/circle.frag"},
      canvas{gl::shader{"./assets/shaders/canvas.vert", "./assets/shaders/canvas.frag"},
             gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)},
             gl::sampler{graphics::create_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 400, 300, {}}
@@ -102,10 +103,18 @@ application::application(application_settings&& settings)
         }};
         std::array<u32, 6> indices {0,1,2, 0,2,3};
 
-        graphics::buffer_upload_data(vbo, data, GL_STATIC_DRAW);
+        std::array<gl::vertex<gl::pos2, gl::pos2, gl::color4, gl::attr<float, 1>>, 4> circle_data {{
+            {{-0.5f, -0.5f}, {150.0f, 150.0f}, {1.0f, 0.4f, 0.2f, 1.0f}, {30.0f}},
+            {{-0.5f,  0.5f}, {150.0f, 150.0f}, {1.0f, 0.4f, 0.2f, 1.0f}, {30.0f}},
+            {{ 0.5f,  0.5f}, {150.0f, 150.0f}, {1.0f, 0.4f, 0.2f, 1.0f}, {30.0f}},
+            {{ 0.5f, -0.5f}, {150.0f, 150.0f}, {1.0f, 0.4f, 0.2f, 1.0f}, {30.0f}},
+        }};
+
+        graphics::buffer_upload_data(vbo, circle_data, GL_STATIC_DRAW);
         graphics::buffer_upload_data(ibo, indices, GL_STATIC_DRAW);
 
-        graphics::vao_configure<gl::pos2>(vao, vbo, 0);
+        //graphics::vao_configure<gl::pos2>(vao, vbo, 0);
+        graphics::vao_configure<gl::pos2, gl::pos2, gl::color4, gl::attr<float, 1>>(vao, vbo, 0);
         graphics::vao_connect_ibo(vao, ibo);
 
         std::array<gl::vertex<gl::pos2, gl::texture_coord>, 4> canvas_data {{
@@ -206,10 +215,10 @@ void application::draw()
         graphics::clear_buffer_color(canvas.buffer.id, graphics::AQUA);
         graphics::bind_vertex_array(vao);
 
-        math::mat4f model {math::translate(cw*0.5f, ch*0.5f, 0.0f)*
-                           math::scale(cw*0.25f, ch*0.25f, 1.0f)};
-        shader.use_shader();
-        shader.set_mat4("u_mvp", canvas.proj*model);
+        math::mat4f model {math::translate(150.0f, 150.0f, 0.0f)*
+                           math::scale(60.0f, 60.0f, 1.0f)};
+        circle_shader.use_shader();
+        circle_shader.set_mat4("u_mvp", canvas.proj*model);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         done = true;
     }

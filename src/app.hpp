@@ -58,6 +58,7 @@ private:
 
     // gl entities.
     gl::shader shader;
+    gl::shader circle_shader;
     gl::vertex_array vao;
     gl::named_buffer vbo;
     gl::named_buffer ibo;
