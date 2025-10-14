@@ -90,7 +90,7 @@ application::application(application_settings&& settings)
 
         peria::graphics::set_vsync(true);
         peria::graphics::set_relative_mouse(sdl_initializer_.window, false);
-        peria::graphics::set_screen_dimensions(app_settings_.window_width, app_settings_.window_height);
+        peria::graphics::set_screen_size(app_settings_.window_width, app_settings_.window_height);
         window_proj = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
     }
     // GL entities here
@@ -152,6 +152,7 @@ bool application::initialized() const noexcept
 { return sdl_initializer_.initialized; }
 
 static bool done {false};
+static mouse mm {};
 
 void application::run()
 {
@@ -161,6 +162,8 @@ void application::run()
 
     while (running) {
         input_manager_->update_mouse();
+        mm = input_manager_->get_mouse_gl();
+        //std::println("{} {}", mm.x, mm.y);
 
         // Poll for events, and react to window resize and mouse movement events here
         for (SDL_Event ev; SDL_PollEvent(&ev);) {
@@ -172,11 +175,13 @@ void application::run()
                 app_settings_.window_width = ev.window.data1;
                 app_settings_.window_height = ev.window.data2;
                 graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
-                graphics::set_screen_dimensions(app_settings_.window_width, app_settings_.window_height);
+                graphics::set_screen_size(app_settings_.window_width, app_settings_.window_height);
                 window_proj = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
             }
             else if (ev.type == SDL_EVENT_MOUSE_MOTION) {
                 peria::graphics::set_relative_motion(ev.motion.xrel, -ev.motion.yrel);
+                temp.mouse_moved = true;
+                //std::println("{}", graphics::get_relative_motion().mouse_moved);
             }
         }
 
@@ -191,13 +196,21 @@ void application::run()
         }
 
         input_manager_->update_prev_state();
+        temp.mouse_moved = false;
 
         SDL_Delay(1); // artificial delay of 1ms to not go bonkers
     }
 }
-
 void application::update()
 {
+    const auto im {input_manager::instance()};
+    static int counter {0};
+    if (temp.mouse_moved && im->mouse_down(mouse_button::MID)) {
+        const auto rel_motion {graphics::get_relative_motion()};
+        temp.world_offset_x += rel_motion.x;
+        temp.world_offset_y += rel_motion.y;
+        //std::println("{} {} {}", counter++, rel_motion.x, rel_motion.y);
+    }
 }
 
 void application::draw()
@@ -227,7 +240,7 @@ void application::draw()
     graphics::clear_buffer_all(0, graphics::INDIGO, 1.0f, 0);
     graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
 
-    math::mat4f model {math::translate(w*0.5f, h*0.5f, 0.0f)*
+    math::mat4f model {math::translate(w*0.5f+temp.world_offset_x*temp.speed, h*0.5f+temp.world_offset_y*temp.speed, 0.0f)*
                        math::scale(cw, ch, 1.0f)};
 
     graphics::bind_vertex_array(canvas_vao);

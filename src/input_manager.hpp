@@ -54,6 +54,9 @@ public:
     [[nodiscard]]
     mouse get_mouse() const noexcept;
 
+    [[nodiscard]]
+    mouse get_mouse_gl() const noexcept;
+
     void update_prev_state();
     void update_mouse() noexcept;
 private:

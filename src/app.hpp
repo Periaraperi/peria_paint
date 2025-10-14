@@ -79,6 +79,13 @@ private:
         math::mat4f proj;
     } canvas;
 
+    struct temp {
+        float world_offset_x {};
+        float world_offset_y {};
+        bool mouse_moved {};
+        float speed {1.5f};
+    } temp;
+
 };
 
 }

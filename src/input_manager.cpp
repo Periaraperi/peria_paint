@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <print>
 
+#include "graphics/graphics.hpp"
+
 namespace peria {
 
 input_manager::input_manager()
@@ -51,6 +53,12 @@ void input_manager::update_mouse() noexcept
 
 mouse input_manager::get_mouse() const noexcept
 { return {mouse_x_, mouse_y_}; }
+
+mouse input_manager::get_mouse_gl() const noexcept
+{
+    const auto h {graphics::get_screen_size().h};
+    return {mouse_x_, static_cast<float>(h)-mouse_y_};
+}
 
 u32 input_manager::get_mask(mouse_button btn) const noexcept
 {

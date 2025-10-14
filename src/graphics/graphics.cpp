@@ -9,8 +9,8 @@ struct graphics_info {
     int   screen_width    {800};
     int   screen_height   {600};
     bool  relative_mouse  {true};
-    float mouse_x_rel     {};
-    float mouse_y_rel     {};
+    float mouse_x_rel     {}; // last rel movement
+    float mouse_y_rel     {}; // last rel movement
 } graphics_info;
 
 void set_relative_motion(float x, float y) noexcept
@@ -29,6 +29,9 @@ void set_relative_mouse(SDL_Window* window, bool rel_mouse) noexcept
         SDL_SetWindowRelativeMouseMode(window, false);
     }
 }
+
+relative_motion get_relative_motion() noexcept
+{ return {graphics_info.mouse_x_rel, graphics_info.mouse_y_rel}; }
   
 void set_viewport(int x, int y, int w, int h) noexcept
 { glViewport(x, y, w, h); }
@@ -36,14 +39,22 @@ void set_viewport(int x, int y, int w, int h) noexcept
 void set_vsync(bool vsync) noexcept
 { (vsync) ? SDL_GL_SetSwapInterval(1) : SDL_GL_SetSwapInterval(0); }
 
-void set_screen_dimensions(int w, int h) noexcept
+void set_screen_size(int w, int h) noexcept
 {
     graphics_info.screen_width = w;
     graphics_info.screen_height = h;
 }
 
+screen_size get_screen_size() noexcept
+{ return {graphics_info.screen_width, graphics_info.screen_height}; }
+
 bool is_relative_mouse() noexcept
 { return graphics_info.relative_mouse; }
+
+void update() noexcept
+{
+    graphics_info.relative_mouse = false;
+}
 
 void bind_frame_buffer_default() noexcept
 { glBindFramebuffer(GL_FRAMEBUFFER, 0); }

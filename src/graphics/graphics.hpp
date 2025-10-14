@@ -14,15 +14,26 @@ using u32 = std::uint32_t;
 
 namespace peria::graphics {
 
+struct screen_size {
+    int w {};
+    int h {};
+};
+
+struct relative_motion {
+    float x {};
+    float y {};
+};
+
 // some screen/window stuff 
 void set_relative_motion(float x, float y) noexcept;
 void set_relative_mouse(SDL_Window* window, bool rel_mouse) noexcept;
 void set_viewport(int x, int y, int w, int h) noexcept;
 void set_vsync(bool vsync) noexcept;
-void set_screen_dimensions(int w, int h) noexcept;
-//[[nodiscard]] glm::vec2 get_screen_dimensions() noexcept;
+void set_screen_size(int w, int h) noexcept;
+void update() noexcept; // reset state for some variables
+[[nodiscard]] screen_size get_screen_size() noexcept;
 [[nodiscard]] bool is_relative_mouse() noexcept;
-//[[nodiscard]] glm::vec2 get_relative_motion() noexcept;
+[[nodiscard]] relative_motion get_relative_motion() noexcept;
 
 // entity bindings
 void bind_frame_buffer_default() noexcept;
