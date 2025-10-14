@@ -31,6 +31,7 @@ public:
     //void set_vec2(const char* u_name, const glm::vec2& v) const noexcept;
     //void set_vec3(const char* u_name, const glm::vec3& v) const noexcept;
     //void set_vec4(const char* u_name, const glm::vec4& v) const noexcept;
+    void set_vec2(const char* u_name, float x, float y) const noexcept;
     void set_vec4(const char* u_name, const graphics::color& v) const noexcept;
     void set_mat4(const char* u_name, const math::mat4f& m, bool let_gl_transpose=true) const noexcept;
     void set_array(const char* u_name, int count, int* arr) const noexcept;

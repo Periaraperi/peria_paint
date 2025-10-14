@@ -104,10 +104,10 @@ application::application(application_settings&& settings)
         std::array<u32, 6> indices {0,1,2, 0,2,3};
 
         std::array<gl::vertex<gl::pos2, gl::pos2, gl::color4, gl::attr<float, 1>>, 4> circle_data {{
-            {{-0.5f, -0.5f}, {150.0f, 150.0f}, {1.0f, 0.4f, 0.2f, 1.0f}, {30.0f}},
-            {{-0.5f,  0.5f}, {150.0f, 150.0f}, {1.0f, 0.4f, 0.2f, 1.0f}, {30.0f}},
-            {{ 0.5f,  0.5f}, {150.0f, 150.0f}, {1.0f, 0.4f, 0.2f, 1.0f}, {30.0f}},
-            {{ 0.5f, -0.5f}, {150.0f, 150.0f}, {1.0f, 0.4f, 0.2f, 1.0f}, {30.0f}},
+            {{-0.5f, -0.5f}, {0, 0}, {1.0f, 0.4f, 0.2f, 1.0f}, {0}},
+            {{-0.5f,  0.5f}, {0, 0}, {1.0f, 0.4f, 0.2f, 1.0f}, {0}},
+            {{ 0.5f,  0.5f}, {0, 0}, {1.0f, 0.4f, 0.2f, 1.0f}, {0}},
+            {{ 0.5f, -0.5f}, {0, 0}, {1.0f, 0.4f, 0.2f, 1.0f}, {0}},
         }};
 
         graphics::buffer_upload_data(vbo, circle_data, GL_STATIC_DRAW);
@@ -201,9 +201,12 @@ void application::run()
         SDL_Delay(1); // artificial delay of 1ms to not go bonkers
     }
 }
+
 void application::update()
 {
     const auto im {input_manager::instance()};
+    const auto [mx, my] {im->get_mouse_gl()};
+    std::println("Mouse world: {} {}", mx+temp.world_offset_x, my+temp.world_offset_y);
     static int counter {0};
     if (temp.mouse_moved && im->mouse_down(mouse_button::MID)) {
         const auto rel_motion {graphics::get_relative_motion()};
@@ -221,17 +224,38 @@ void application::draw()
     const auto cw {static_cast<float>(canvas.tex_w)};
     const auto ch {static_cast<float>(canvas.tex_h)};
 
-    if (!done) {
-        std::println("DRAWING TO OFFSCREEN BUFFER ONCE, AND REUSING IT LATER");
+    const auto im {input_manager::instance()};
+    const auto [mx, my] {im->get_mouse_gl()};
+
+    const auto canvas_world_center_x {w*0.5f+temp.world_offset_x*temp.speed};
+    const auto canvas_world_center_y {h*0.5f+temp.world_offset_y*temp.speed};
+    const auto canvas_lower_left_x   {canvas_world_center_x-canvas.tex_w*0.5f};
+    const auto canvas_lower_left_y   {canvas_world_center_y-canvas.tex_h*0.5f};
+    const auto canvas_upper_right_x  {canvas_world_center_x+canvas.tex_w*0.5f};
+    const auto canvas_upper_right_y  {canvas_world_center_y+canvas.tex_h*0.5f};
+
+    if (mx >= canvas_lower_left_x &&
+        mx <= canvas_upper_right_x &&
+        my >= canvas_lower_left_y &&
+        my <= canvas_upper_right_y) {
+        std::println("INSIDE!!!!!!!!!!!!");
+    }
+
+    if (1) {
+        //std::println("DRAWING TO OFFSCREEN BUFFER ONCE, AND REUSING IT LATER");
         graphics::bind_frame_buffer(canvas.buffer);
         graphics::set_viewport(0, 0, canvas.tex_w, canvas.tex_h);
         graphics::clear_buffer_color(canvas.buffer.id, graphics::AQUA);
         graphics::bind_vertex_array(vao);
-
-        math::mat4f model {math::translate(150.0f, 150.0f, 0.0f)*
-                           math::scale(60.0f, 60.0f, 1.0f)};
+        
+        math::mat4f model {math::translate(mx-canvas_lower_left_x, my-canvas_lower_left_y, 0.0f)*
+                           math::scale(10.0f, 10.0f, 1.0f)};
+        //math::mat4f model {math::translate(150.0f, 150.0f, 0.0f)*
+        //                   math::scale(60.0f, 60.0f, 1.0f)};
         circle_shader.use_shader();
         circle_shader.set_mat4("u_mvp", canvas.proj*model);
+        circle_shader.set_float("u_radius", 5.0f);
+        circle_shader.set_vec2("u_center_world", mx-canvas_lower_left_x, my-canvas_lower_left_y);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         done = true;
     }

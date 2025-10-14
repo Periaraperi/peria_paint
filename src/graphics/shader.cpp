@@ -108,6 +108,9 @@ void shader::set_uint(const char* u_name, u32 val) const noexcept
 void shader::set_float(const char* u_name, float val) const noexcept
 { glProgramUniform1f(id, glGetUniformLocation(id, u_name), val); }
 
+void shader::set_vec2(const char* u_name, float x, float y) const noexcept
+{ glProgramUniform2f(id, glGetUniformLocation(id, u_name), x, y); }
+
 void shader::set_vec4(const char* u_name, const graphics::color& v) const noexcept
 { glProgramUniform4f(id, glGetUniformLocation(id, u_name), v.r, v.g, v.b, v.a); }
 
