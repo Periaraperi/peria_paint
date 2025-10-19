@@ -51,11 +51,6 @@ screen_size get_screen_size() noexcept
 bool is_relative_mouse() noexcept
 { return graphics_info.relative_mouse; }
 
-void update() noexcept
-{
-    graphics_info.relative_mouse = false;
-}
-
 void bind_frame_buffer_default() noexcept
 { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
 

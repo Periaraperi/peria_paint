@@ -69,11 +69,11 @@ sdl_initializer::~sdl_initializer()
 application::application(application_settings&& settings)
     :app_settings_{std::move(settings)},
      sdl_initializer_{app_settings_},
-     shader{"./assets/shaders/default.vert", "./assets/shaders/default.frag"},
      circle_shader{"./assets/shaders/circle.vert", "./assets/shaders/circle.frag"},
-     canvas{gl::shader{"./assets/shaders/canvas.vert", "./assets/shaders/canvas.frag"},
-            gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)},
-            gl::sampler{graphics::create_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 400, 300, {}}
+     textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
+     canvas{gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)},
+            gl::sampler{graphics::create_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
+            400, 300, {}, {}, {}}
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
@@ -84,23 +84,17 @@ application::application(application_settings&& settings)
         //TODO: come back to these settings later
         //glEnable(GL_BLEND);
         //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        //glEnable(GL_DEPTH_TEST);
+        glEnable(GL_DEPTH_TEST);
         //glEnable(GL_STENCIL_TEST);
         //glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
         peria::graphics::set_vsync(true);
         peria::graphics::set_relative_mouse(sdl_initializer_.window, false);
         peria::graphics::set_screen_size(app_settings_.window_width, app_settings_.window_height);
-        window_proj = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
+        window_projection = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
     }
     // GL entities here
     {
-        std::array<gl::vertex<gl::pos2>, 4> data {{
-            {{-0.5f, -0.5f}},
-            {{-0.5f,  0.5f}},
-            {{ 0.5f,  0.5f}},
-            {{ 0.5f, -0.5f}},
-        }};
         std::array<u32, 6> indices {0,1,2, 0,2,3};
 
         std::array<gl::vertex<gl::pos2, gl::pos2, gl::color4, gl::attr<float, 1>>, 4> circle_data {{
@@ -113,7 +107,6 @@ application::application(application_settings&& settings)
         graphics::buffer_upload_data(vbo, circle_data, GL_STATIC_DRAW);
         graphics::buffer_upload_data(ibo, indices, GL_STATIC_DRAW);
 
-        //graphics::vao_configure<gl::pos2>(vao, vbo, 0);
         graphics::vao_configure<gl::pos2, gl::pos2, gl::color4, gl::attr<float, 1>>(vao, vbo, 0);
         graphics::vao_connect_ibo(vao, ibo);
 
@@ -135,10 +128,15 @@ application::application(application_settings&& settings)
             std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
         }
 
-        canvas.shader.set_int("u_canvas_texture", 0);
-        canvas.proj = math::get_ortho_projection(0.0f, static_cast<float>(canvas.tex_w), 0.0f, static_cast<float>(canvas.tex_h));
+        textured_quad_shader.set_int("u_canvas_texture", 0);
+        canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+        canvas.pos_x = 0.5f*(static_cast<float>(graphics::get_screen_size().w));
+        canvas.pos_y = 0.5f*(static_cast<float>(graphics::get_screen_size().h));
     }
 
+    cpx.reserve(1024);
+    cpy.reserve(1024);
+    cpr.reserve(1024);
 }
 
 application::~application()
@@ -151,9 +149,6 @@ application::~application()
 bool application::initialized() const noexcept
 { return sdl_initializer_.initialized; }
 
-static bool done {false};
-static mouse mm {};
-
 void application::run()
 {
     bool running {true};
@@ -162,8 +157,6 @@ void application::run()
 
     while (running) {
         input_manager_->update_mouse();
-        mm = input_manager_->get_mouse_gl();
-        //std::println("{} {}", mm.x, mm.y);
 
         // Poll for events, and react to window resize and mouse movement events here
         for (SDL_Event ev; SDL_PollEvent(&ev);) {
@@ -176,12 +169,11 @@ void application::run()
                 app_settings_.window_height = ev.window.data2;
                 graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
                 graphics::set_screen_size(app_settings_.window_width, app_settings_.window_height);
-                window_proj = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
+                window_projection = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
             }
             else if (ev.type == SDL_EVENT_MOUSE_MOTION) {
                 peria::graphics::set_relative_motion(ev.motion.xrel, -ev.motion.yrel);
-                temp.mouse_moved = true;
-                //std::println("{}", graphics::get_relative_motion().mouse_moved);
+                info.mouse_moved = true;
             }
         }
 
@@ -196,82 +188,125 @@ void application::run()
         }
 
         input_manager_->update_prev_state();
-        temp.mouse_moved = false;
+        info.mouse_moved = false;
 
         SDL_Delay(1); // artificial delay of 1ms to not go bonkers
     }
 }
 
+static float brush_size {10.0f};
+
 void application::update()
 {
     const auto im {input_manager::instance()};
     const auto [mx, my] {im->get_mouse_gl()};
-    std::println("Mouse world: {} {}", mx+temp.world_offset_x, my+temp.world_offset_y);
-    static int counter {0};
-    if (temp.mouse_moved && im->mouse_down(mouse_button::MID)) {
+
+    if (info.mouse_moved && im->mouse_down(mouse_button::MID)) {
         const auto rel_motion {graphics::get_relative_motion()};
-        temp.world_offset_x += rel_motion.x;
-        temp.world_offset_y += rel_motion.y;
-        //std::println("{} {} {}", counter++, rel_motion.x, rel_motion.y);
+        info.world_offset_x += rel_motion.x;
+        info.world_offset_y += rel_motion.y;
+        return;
     }
+
+    if (info.mouse_moved && 
+        im->mouse_down(mouse_button::LEFT) &&
+        im->key_down(SDL_SCANCODE_LSHIFT)) {
+
+        const auto rel_motion {graphics::get_relative_motion()};
+        const auto dx {rel_motion.x*info.pan_speed};
+        const auto dy {rel_motion.y*info.pan_speed};
+        std::println("dx {} dy {}", dx, dy);
+
+        canvas.width  += static_cast<int>(dx);
+        canvas.height += static_cast<int>(dy);
+
+        canvas.texture = graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA8);
+        glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
+        const auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
+        }
+        canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+        return;
+    }
+
+    {
+        const auto canvas_world_center_x {canvas.pos_x+info.world_offset_x*info.pan_speed};
+        const auto canvas_world_center_y {canvas.pos_y+info.world_offset_y*info.pan_speed};
+        const auto canvas_lower_left_x   {canvas_world_center_x-canvas.width*0.5f};
+        const auto canvas_lower_left_y   {canvas_world_center_y-canvas.height*0.5f};
+        const auto canvas_upper_right_x  {canvas_world_center_x+canvas.width*0.5f};
+        const auto canvas_upper_right_y  {canvas_world_center_y+canvas.height*0.5f};
+
+        bool inside_canvas {mx >= canvas_lower_left_x &&
+                            mx <= canvas_upper_right_x &&
+                            my >= canvas_lower_left_y &&
+                            my <= canvas_upper_right_y};
+
+        if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
+            cpx.emplace_back(mx-canvas_lower_left_x);
+            cpy.emplace_back(my-canvas_lower_left_y);
+            cpr.emplace_back(brush_size*0.5f);
+        }
+    }
+
 }
 
 void application::draw()
 {
-    const auto w {static_cast<float>(app_settings_.window_width)};
-    const auto h {static_cast<float>(app_settings_.window_height)};
-
-    const auto cw {static_cast<float>(canvas.tex_w)};
-    const auto ch {static_cast<float>(canvas.tex_h)};
-
     const auto im {input_manager::instance()};
     const auto [mx, my] {im->get_mouse_gl()};
 
-    const auto canvas_world_center_x {w*0.5f+temp.world_offset_x*temp.speed};
-    const auto canvas_world_center_y {h*0.5f+temp.world_offset_y*temp.speed};
-    const auto canvas_lower_left_x   {canvas_world_center_x-canvas.tex_w*0.5f};
-    const auto canvas_lower_left_y   {canvas_world_center_y-canvas.tex_h*0.5f};
-    const auto canvas_upper_right_x  {canvas_world_center_x+canvas.tex_w*0.5f};
-    const auto canvas_upper_right_y  {canvas_world_center_y+canvas.tex_h*0.5f};
+    // render to canvas framebuffer
+    {
+        const auto canvas_world_center_x {canvas.pos_x+info.world_offset_x*info.pan_speed};
+        const auto canvas_world_center_y {canvas.pos_y+info.world_offset_y*info.pan_speed};
+        const auto canvas_lower_left_x   {canvas_world_center_x-canvas.width*0.5f};
+        const auto canvas_lower_left_y   {canvas_world_center_y-canvas.height*0.5f};
 
-    if (mx >= canvas_lower_left_x &&
-        mx <= canvas_upper_right_x &&
-        my >= canvas_lower_left_y &&
-        my <= canvas_upper_right_y) {
-        std::println("INSIDE!!!!!!!!!!!!");
-    }
-
-    if (1) {
-        //std::println("DRAWING TO OFFSCREEN BUFFER ONCE, AND REUSING IT LATER");
         graphics::bind_frame_buffer(canvas.buffer);
-        graphics::set_viewport(0, 0, canvas.tex_w, canvas.tex_h);
+        graphics::set_viewport(0, 0, canvas.width, canvas.height);
         graphics::clear_buffer_color(canvas.buffer.id, graphics::AQUA);
+
         graphics::bind_vertex_array(vao);
-        
-        math::mat4f model {math::translate(mx-canvas_lower_left_x, my-canvas_lower_left_y, 0.0f)*
-                           math::scale(10.0f, 10.0f, 1.0f)};
-        //math::mat4f model {math::translate(150.0f, 150.0f, 0.0f)*
-        //                   math::scale(60.0f, 60.0f, 1.0f)};
         circle_shader.use_shader();
-        circle_shader.set_mat4("u_mvp", canvas.proj*model);
-        circle_shader.set_float("u_radius", 5.0f);
+
+        for (std::size_t i{}; i<cpx.size(); ++i) {
+            math::mat4f m {math::translate(cpx[i], cpy[i], 0.0f)*
+                           math::scale(brush_size, brush_size, 1.0f)};
+            circle_shader.set_mat4("u_mvp", canvas.projection*m);
+            circle_shader.set_float("u_radius", brush_size*0.5f);
+            circle_shader.set_vec2("u_center_world", cpx[i], cpy[i]);
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        }
+        
+        // brush cursor
+        math::mat4f model {math::translate(mx-canvas_lower_left_x, my-canvas_lower_left_y, 0.0f)*
+                           math::scale(brush_size, brush_size, 1.0f)};
+        circle_shader.set_mat4("u_mvp", canvas.projection*model);
+        circle_shader.set_float("u_radius", brush_size*0.5f);
         circle_shader.set_vec2("u_center_world", mx-canvas_lower_left_x, my-canvas_lower_left_y);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-        done = true;
     }
 
-    graphics::bind_frame_buffer_default();
-    graphics::clear_buffer_all(0, graphics::INDIGO, 1.0f, 0);
-    graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
+    {
+        graphics::bind_frame_buffer_default();
+        graphics::clear_buffer_all(0, graphics::INDIGO, 1.0f, 0);
+        graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
 
-    math::mat4f model {math::translate(w*0.5f+temp.world_offset_x*temp.speed, h*0.5f+temp.world_offset_y*temp.speed, 0.0f)*
-                       math::scale(cw, ch, 1.0f)};
 
-    graphics::bind_vertex_array(canvas_vao);
-    canvas.shader.use_shader();
-    canvas.shader.set_mat4("u_mvp", window_proj*model);
-    graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        const auto cw {static_cast<float>(canvas.width)};
+        const auto ch {static_cast<float>(canvas.height)};
+
+        math::mat4f model {math::translate(canvas.pos_x+info.world_offset_x*info.pan_speed, canvas.pos_y+info.world_offset_y*info.pan_speed, 0.0f)*
+                           math::scale(cw, ch, 1.0f)};
+
+        graphics::bind_vertex_array(canvas_vao);
+        textured_quad_shader.use_shader();
+        textured_quad_shader.set_mat4("u_mvp", window_projection*model);
+        graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+    }
 }
 
 }

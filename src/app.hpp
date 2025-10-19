@@ -2,6 +2,8 @@
 
 #include <SDL3/SDL_video.h>
 
+#include <vector>
+
 #include "graphics/gl_entities.hpp"
 #include "graphics/shader.hpp"
 
@@ -57,8 +59,8 @@ private:
     void draw();
 
     // gl entities.
-    gl::shader shader;
     gl::shader circle_shader;
+    gl::shader textured_quad_shader;
     gl::vertex_array vao;
     gl::named_buffer vbo;
     gl::named_buffer ibo;
@@ -66,26 +68,30 @@ private:
     gl::vertex_array canvas_vao;
     gl::named_buffer canvas_vbo;
 
-    math::mat4f window_proj;
+    math::mat4f window_projection;
 
     struct canvas {
-        gl::shader shader;
         gl::texture2d texture;
         gl::sampler sampler;
         gl::frame_buffer buffer;
 
-        int tex_w {};
-        int tex_h {};
-        math::mat4f proj;
+        int width  {};
+        int height {};
+        float pos_x {};
+        float pos_y {};
+        math::mat4f projection;
     } canvas;
 
-    struct temp {
+    struct info {
         float world_offset_x {};
         float world_offset_y {};
         bool mouse_moved {};
-        float speed {1.5f};
-        
-    } temp;
+        float pan_speed {1.5f};
+    } info;
+
+    std::vector<float> cpx;
+    std::vector<float> cpy;
+    std::vector<float> cpr;
 
 };
 

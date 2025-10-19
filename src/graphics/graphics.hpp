@@ -30,7 +30,6 @@ void set_relative_mouse(SDL_Window* window, bool rel_mouse) noexcept;
 void set_viewport(int x, int y, int w, int h) noexcept;
 void set_vsync(bool vsync) noexcept;
 void set_screen_size(int w, int h) noexcept;
-void update() noexcept; // reset state for some variables
 [[nodiscard]] screen_size get_screen_size() noexcept;
 [[nodiscard]] bool is_relative_mouse() noexcept;
 [[nodiscard]] relative_motion get_relative_motion() noexcept;
