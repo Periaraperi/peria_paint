@@ -80,7 +80,15 @@ private:
         float pos_x {};
         float pos_y {};
         math::mat4f projection;
+        graphics::color bg_color;
     } canvas;
+
+    struct temp_canvas {
+        gl::texture2d texture;
+        gl::frame_buffer buffer;
+        int width  {};
+        int height {};
+    } temp_canvas;
 
     struct info {
         float world_offset_x {};
