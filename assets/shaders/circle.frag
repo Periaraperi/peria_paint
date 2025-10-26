@@ -15,7 +15,7 @@ void main()
     //float s = 1.0f - step(u_radius, length(p));
     //float s = 1.0f - smoothstep(u_radius-1.5f, u_radius, length(p));
     float plen = length(p) / u_radius;
-    float s = 1.0f - smoothstep(0.95f, 1.0f, plen);
+    float s = 1.0f - step(1.0f, plen);
     final_color = color*vec4(s);
     //p -= u_center_world; // translate to origin
     

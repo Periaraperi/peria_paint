@@ -29,6 +29,7 @@ void set_relative_motion(float x, float y) noexcept;
 void set_relative_mouse(SDL_Window* window, bool rel_mouse) noexcept;
 void set_viewport(int x, int y, int w, int h) noexcept;
 void set_vsync(bool vsync) noexcept;
+bool is_vsync() noexcept;
 void set_screen_size(int w, int h) noexcept;
 [[nodiscard]] screen_size get_screen_size() noexcept;
 [[nodiscard]] bool is_relative_mouse() noexcept;

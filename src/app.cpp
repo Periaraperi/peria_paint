@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "input_manager.hpp"
+#include "timing_utility.hpp"
 #include "graphics/graphics.hpp"
 
 namespace peria {
@@ -73,13 +74,15 @@ application::application(application_settings&& settings)
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      canvas{gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)},
             gl::sampler{graphics::create_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
-            400, 300, {}, {}, {}, graphics::AQUA},
+            400, 300, {}, {}, {}, graphics::WHITE},
      temp_canvas{{gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)}}, {}, 400, 300}
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
 
     input_manager::initialize();
+
+    game_loop_timer::initialize();
 
     {
         //TODO: come back to these settings later
@@ -99,10 +102,10 @@ application::application(application_settings&& settings)
         std::array<u32, 6> indices {0,1,2, 0,2,3};
 
         std::array<gl::vertex<gl::pos2, gl::pos2, gl::color4, gl::attr<float, 1>>, 4> circle_data {{
-            {{-0.5f, -0.5f}, {0, 0}, {1.0f, 0.4f, 0.2f, 1.0f}, {0}},
-            {{-0.5f,  0.5f}, {0, 0}, {1.0f, 0.4f, 0.2f, 1.0f}, {0}},
-            {{ 0.5f,  0.5f}, {0, 0}, {1.0f, 0.4f, 0.2f, 1.0f}, {0}},
-            {{ 0.5f, -0.5f}, {0, 0}, {1.0f, 0.4f, 0.2f, 1.0f}, {0}},
+            {{-0.5f, -0.5f}, {0, 0}, {0.0f, 0.1f, 0.1f, 1.0f}, {0}},
+            {{-0.5f,  0.5f}, {0, 0}, {0.0f, 0.1f, 0.1f, 1.0f}, {0}},
+            {{ 0.5f,  0.5f}, {0, 0}, {0.0f, 0.1f, 0.1f, 1.0f}, {0}},
+            {{ 0.5f, -0.5f}, {0, 0}, {0.0f, 0.1f, 0.1f, 1.0f}, {0}},
         }};
 
         graphics::buffer_upload_data(vbo, circle_data, GL_STATIC_DRAW);
@@ -151,6 +154,7 @@ application::application(application_settings&& settings)
 application::~application()
 {
     input_manager::shutdown();
+    game_loop_timer::shutdown();
 
     std::println("Shutting down application");
 }
@@ -162,9 +166,12 @@ void application::run()
 {
     bool running {true};
 
-    auto input_manager_ {input_manager::instance()};
+    auto input_manager_   {input_manager::instance()};
+    //auto game_loop_timer_ {game_loop_timer::instance()};
 
     while (running) {
+        const float elapsed_time {};
+
         input_manager_->update_mouse();
 
         // Poll for events, and react to window resize and mouse movement events here
@@ -187,18 +194,18 @@ void application::run()
         }
 
         update();
-
         draw();
 
-        if (!SDL_GL_SwapWindow(sdl_initializer_.window)) {
-            std::println("SDL_GL_SwapWindow failed");
-            running = false;
-            break;
-        }
+        SDL_GL_SwapWindow(sdl_initializer_.window);
+        info.mouse_moved = false;
+        
+        std::string title {"peria_paint | dt = "+std::to_string(elapsed_time)+" | "+std::to_string(1.0f/static_cast<float>(target_fps))};
+        if (graphics::is_vsync()) title += " VSYNC: ON";
+        else title += " VSYNC: OFF";
+
+        SDL_SetWindowTitle(sdl_initializer_.window, title.c_str());
 
         input_manager_->update_prev_state();
-        info.mouse_moved = false;
-
         SDL_Delay(1); // artificial delay of 1ms to not go bonkers
     }
 }
@@ -221,6 +228,9 @@ void application::update()
     if (im->key_down(SDL_SCANCODE_E)) {
         brush_size -= 1.0f;
         brush_size = std::max(brush_size, 2.0f);
+    }
+    if (im->key_pressed(SDL_SCANCODE_V)) {
+        graphics::set_vsync(!graphics::is_vsync());
     }
 
     // make canvas bigger
@@ -383,7 +393,7 @@ void application::draw()
 
     {
         graphics::bind_frame_buffer_default();
-        graphics::clear_buffer_all(0, graphics::INDIGO, 1.0f, 0);
+        graphics::clear_buffer_all(0, graphics::GREY, 1.0f, 0);
         graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
 
 

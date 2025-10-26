@@ -54,6 +54,7 @@ public:
 private:
     application_settings app_settings_;
     sdl::sdl_initializer sdl_initializer_;
+    int target_fps {120};
 
     void update();
     void draw();

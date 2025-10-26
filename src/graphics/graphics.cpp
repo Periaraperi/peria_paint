@@ -39,6 +39,13 @@ void set_viewport(int x, int y, int w, int h) noexcept
 void set_vsync(bool vsync) noexcept
 { (vsync) ? SDL_GL_SetSwapInterval(1) : SDL_GL_SetSwapInterval(0); }
 
+bool is_vsync() noexcept
+{ 
+    int interval {};
+    SDL_GL_GetSwapInterval(&interval);
+    return interval == 1;
+}
+
 void set_screen_size(int w, int h) noexcept
 {
     graphics_info.screen_width = w;
