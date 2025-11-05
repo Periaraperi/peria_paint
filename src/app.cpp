@@ -1,14 +1,20 @@
 #include "app.hpp"
 
 #include <SDL3/SDL.h>
+#include <chrono>
 #include <glad/glad.h>
 
 #include <print>
 #include <utility>
 
 #include "input_manager.hpp"
-#include "timing_utility.hpp"
 #include "graphics/graphics.hpp"
+
+namespace {
+
+constexpr int MAX_FPS {500};
+
+}
 
 namespace peria {
 
@@ -82,8 +88,6 @@ application::application(application_settings&& settings)
 
     input_manager::initialize();
 
-    game_loop_timer::initialize();
-
     {
         //TODO: come back to these settings later
         glEnable(GL_BLEND);
@@ -154,7 +158,6 @@ application::application(application_settings&& settings)
 application::~application()
 {
     input_manager::shutdown();
-    game_loop_timer::shutdown();
 
     std::println("Shutting down application");
 }
@@ -166,11 +169,23 @@ void application::run()
 {
     bool running {true};
 
-    auto input_manager_   {input_manager::instance()};
-    //auto game_loop_timer_ {game_loop_timer::instance()};
+    auto input_manager_ {input_manager::instance()};
+
+    std::chrono::steady_clock clock {};
+    auto prev_time {clock.now()};
 
     while (running) {
-        const float elapsed_time {};
+        const auto current_time {clock.now()};
+        const auto elapsed_time {std::chrono::duration_cast<std::chrono::milliseconds>(current_time-prev_time).count()};
+    
+        // milliseconds
+        if (const auto t{(1.0f/MAX_FPS)*1000.0f}; static_cast<float>(elapsed_time) < t) {
+            //std::println("unda shevisvenot, dzaan swrapia {}", t-static_cast<float>(elapsed_time));
+            SDL_Delay(static_cast<uint32_t>(t-static_cast<float>(elapsed_time)));
+        }
+
+        prev_time = current_time;
+        const auto dt {static_cast<float>(elapsed_time)*0.001f}; // in seconds
 
         input_manager_->update_mouse();
 
@@ -195,18 +210,26 @@ void application::run()
 
         update();
         draw();
+        if(1){
+            int dummy {};
+            for (int i{}; i<10000000; ++i) {
+                ++dummy;
+                //dummy %= 10000;
+            }
+        }
 
         SDL_GL_SwapWindow(sdl_initializer_.window);
         info.mouse_moved = false;
         
-        std::string title {"peria_paint | dt = "+std::to_string(elapsed_time)+" | "+std::to_string(1.0f/static_cast<float>(target_fps))};
+        //std::string title {"peria_paint | dt = "+std::to_string(elapsed_time)+" | "+std::to_string(1.0f/static_cast<float>(target_fps))};
+        std::string title {"peria_paint | "+std::to_string(elapsed_time)+" "+std::to_string(dt)};
         if (graphics::is_vsync()) title += " VSYNC: ON";
         else title += " VSYNC: OFF";
 
         SDL_SetWindowTitle(sdl_initializer_.window, title.c_str());
 
         input_manager_->update_prev_state();
-        SDL_Delay(1); // artificial delay of 1ms to not go bonkers
+        //SDL_Delay(1); // artificial delay of 1ms to not go bonkers
     }
 }
 
