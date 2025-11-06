@@ -54,9 +54,8 @@ public:
 private:
     application_settings app_settings_;
     sdl::sdl_initializer sdl_initializer_;
-    int target_fps {120};
 
-    void update();
+    void update(float dt);
     void draw();
 
     // gl entities.
@@ -95,7 +94,12 @@ private:
         float world_offset_x {};
         float world_offset_y {};
         bool mouse_moved {};
-        float pan_speed {1.5f};
+        float pan_speed {50.0f};
+        float resize_speed {100.0f};
+        float brush_size {10.0f};
+        bool should_draw {false};
+        bool init {true};
+        bool resized {true};
     } info;
 
     std::vector<float> cpx;

@@ -20,7 +20,7 @@ public:
             }
         }
     }
-    explicit matrix(std::array<std::array<T, M>, N> data) noexcept
+    explicit matrix(const std::array<std::array<T, M>, N>& data) noexcept
     {
         for (std::size_t r{}; r<N; ++r) {
             for (std::size_t c{}; c<M; ++c) {

@@ -93,8 +93,6 @@ application::application(application_settings&& settings)
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glEnable(GL_DEPTH_TEST);
-        //glEnable(GL_STENCIL_TEST);
-        //glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
         peria::graphics::set_vsync(true);
         peria::graphics::set_relative_mouse(sdl_initializer_.window, false);
@@ -176,12 +174,13 @@ void application::run()
 
     while (running) {
         const auto current_time {clock.now()};
-        const auto elapsed_time {std::chrono::duration_cast<std::chrono::milliseconds>(current_time-prev_time).count()};
+        auto elapsed_time {std::chrono::duration_cast<std::chrono::milliseconds>(current_time-prev_time).count()};
     
         // milliseconds
         if (const auto t{(1.0f/MAX_FPS)*1000.0f}; static_cast<float>(elapsed_time) < t) {
             //std::println("unda shevisvenot, dzaan swrapia {}", t-static_cast<float>(elapsed_time));
             SDL_Delay(static_cast<uint32_t>(t-static_cast<float>(elapsed_time)));
+            elapsed_time = static_cast<uint32_t>(t);
         }
 
         prev_time = current_time;
@@ -208,20 +207,12 @@ void application::run()
             }
         }
 
-        update();
+        update(dt);
         draw();
-        if(1){
-            int dummy {};
-            for (int i{}; i<10000000; ++i) {
-                ++dummy;
-                //dummy %= 10000;
-            }
-        }
 
         SDL_GL_SwapWindow(sdl_initializer_.window);
         info.mouse_moved = false;
         
-        //std::string title {"peria_paint | dt = "+std::to_string(elapsed_time)+" | "+std::to_string(1.0f/static_cast<float>(target_fps))};
         std::string title {"peria_paint | "+std::to_string(elapsed_time)+" "+std::to_string(dt)};
         if (graphics::is_vsync()) title += " VSYNC: ON";
         else title += " VSYNC: OFF";
@@ -229,28 +220,22 @@ void application::run()
         SDL_SetWindowTitle(sdl_initializer_.window, title.c_str());
 
         input_manager_->update_prev_state();
-        //SDL_Delay(1); // artificial delay of 1ms to not go bonkers
     }
 }
 
-static float brush_size {10.0f};
-static bool should_draw {false};
-static bool init {true};
-static bool resized {true};
-
-void application::update()
+void application::update(float dt)
 {
     const auto im {input_manager::instance()};
     const auto [mx, my] {im->get_mouse_gl()};
-    should_draw = false;
+    info.should_draw = false;
 
     if (im->key_down(SDL_SCANCODE_W)) {
-        brush_size += 1.0f;
-        brush_size = std::min(brush_size, 150.0f);
+        info.brush_size += 10.0f*dt;
+        info.brush_size = std::min(info.brush_size, 150.0f);
     }
     if (im->key_down(SDL_SCANCODE_E)) {
-        brush_size -= 1.0f;
-        brush_size = std::max(brush_size, 2.0f);
+        info.brush_size -= 10.0f*dt;
+        info.brush_size = std::max(info.brush_size, 2.0f);
     }
     if (im->key_pressed(SDL_SCANCODE_V)) {
         graphics::set_vsync(!graphics::is_vsync());
@@ -265,21 +250,14 @@ void application::update()
         im->key_down(SDL_SCANCODE_LSHIFT)) {
 
         const auto rel_motion {graphics::get_relative_motion()};
-        const auto dx {rel_motion.x*info.pan_speed};
-        const auto dy {rel_motion.y*info.pan_speed};
+        const auto dx {rel_motion.x};
+        const auto dy {rel_motion.y};
         std::println("dx {} dy {}", dx, dy);
 
         const auto new_width {canvas.width + static_cast<int>(dx)};
         const auto new_height {canvas.height + static_cast<int>(dy)};
 
-        //canvas.texture = graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA8);
         gl::texture2d texture = graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA8);
-        //std::vector<u32> pixels;
-        //pixels.reserve(static_cast<std::size_t>(new_width*new_height));
-        //for (int i{}; i<new_width*new_height; ++i) {
-        //    pixels.emplace_back(11);
-        //}
-        //glTextureSubImage2D(texture.id, 0, 0, 0, new_width, new_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
         temp_canvas.texture = graphics::create_texture2d(new_width, new_height, GL_RGBA8);
         glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
@@ -289,20 +267,8 @@ void application::update()
         }
         temp_canvas.width = new_width;
         temp_canvas.height = new_height;
-        resized = true;
+        info.resized = true;
 
-        //glCopyImageSubData(canvas.texture.id, GL_TEXTURE_2D , 0, 0, 0, 0,
-        //                   texture.id, GL_TEXTURE_2D, 0, 0, 0, 0, 
-        //                   canvas.width, canvas.height, 1);
-        //canvas.texture = std::move(texture);
-        //canvas.width = new_width;
-        //canvas.height = new_height;
-        //glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
-        //const auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
-        //if (status != GL_FRAMEBUFFER_COMPLETE) {
-        //    std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
-        //}
-        //canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
         return;
     }
 
@@ -324,8 +290,8 @@ void application::update()
     //
     //       Maybe try to update parts of canvas as well? Like how would we do bucket tool
     {
-        const auto canvas_world_center_x {canvas.pos_x+info.world_offset_x*info.pan_speed};
-        const auto canvas_world_center_y {canvas.pos_y+info.world_offset_y*info.pan_speed};
+        const auto canvas_world_center_x {canvas.pos_x+info.world_offset_x};
+        const auto canvas_world_center_y {canvas.pos_y+info.world_offset_y};
         const auto canvas_lower_left_x   {canvas_world_center_x-canvas.width*0.5f};
         const auto canvas_lower_left_y   {canvas_world_center_y-canvas.height*0.5f};
         const auto canvas_upper_right_x  {canvas_world_center_x+canvas.width*0.5f};
@@ -339,8 +305,8 @@ void application::update()
         if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
             cpx.emplace_back(mx-canvas_lower_left_x);
             cpy.emplace_back(my-canvas_lower_left_y);
-            cpr.emplace_back(brush_size*0.5f);
-            should_draw = true;
+            cpr.emplace_back(info.brush_size*0.5f);
+            info.should_draw = true;
         }
     }
 
@@ -348,18 +314,16 @@ void application::update()
 
 void application::draw()
 {
-    const auto im {input_manager::instance()};
-    const auto [mx, my] {im->get_mouse_gl()};
-
     // TODO: Test clear vs non-clear approach.
-    if (init) {
+    // We want to clear canvas to some background color when we first initialize.
+    if (info.init) {
         graphics::bind_frame_buffer(canvas.buffer);
         graphics::set_viewport(0, 0, canvas.width, canvas.height);
         graphics::clear_buffer_color(canvas.buffer.id, canvas.bg_color);
-        init = false;
+        info.init = false;
     }
 
-    if (resized) {
+    if (info.resized) {
         graphics::bind_frame_buffer(temp_canvas.buffer);
         graphics::set_viewport(0, 0, temp_canvas.width, temp_canvas.height);
         graphics::clear_buffer_color(temp_canvas.buffer.id, canvas.bg_color);
@@ -376,19 +340,13 @@ void application::draw()
         temp_canvas.height = std::exchange(canvas.height, std::move(temp_canvas.height));
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
 
-        resized = false;
+        info.resized = false;
     }
 
-    // render to canvas framebuffer
-    if (should_draw) {
-        const auto canvas_world_center_x {canvas.pos_x+info.world_offset_x*info.pan_speed};
-        const auto canvas_world_center_y {canvas.pos_y+info.world_offset_y*info.pan_speed};
-        const auto canvas_lower_left_x   {canvas_world_center_x-canvas.width*0.5f};
-        const auto canvas_lower_left_y   {canvas_world_center_y-canvas.height*0.5f};
-
+    // Only draw if we are doing brush strokes.
+    if (info.should_draw) {
         graphics::bind_frame_buffer(canvas.buffer);
         graphics::set_viewport(0, 0, canvas.width, canvas.height);
-        //graphics::clear_buffer_color(canvas.buffer.id, graphics::AQUA);
 
         graphics::bind_vertex_array(vao);
         circle_shader.use_shader();
@@ -404,26 +362,18 @@ void application::draw()
         cpx.clear();
         cpy.clear();
         cpr.clear();
-        
-        // brush cursor
-        //math::mat4f model {math::translate(mx-canvas_lower_left_x, my-canvas_lower_left_y, 0.0f)*
-        //                   math::scale(brush_size, brush_size, 1.0f)};
-        //circle_shader.set_mat4("u_mvp", canvas.projection*model);
-        //circle_shader.set_float("u_radius", brush_size*0.5f);
-        //circle_shader.set_vec2("u_center_world", mx-canvas_lower_left_x, my-canvas_lower_left_y);
-        //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     }
 
+    // Last pass to render canvas on a quad and position it in the world based on world pos and world offset.
     {
         graphics::bind_frame_buffer_default();
         graphics::clear_buffer_all(0, graphics::GREY, 1.0f, 0);
         graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
 
-
         const auto cw {static_cast<float>(canvas.width)};
         const auto ch {static_cast<float>(canvas.height)};
 
-        math::mat4f model {math::translate(canvas.pos_x+info.world_offset_x*info.pan_speed, canvas.pos_y+info.world_offset_y*info.pan_speed, 0.0f)*
+        math::mat4f model {math::translate(canvas.pos_x+info.world_offset_x, canvas.pos_y+info.world_offset_y, 0.0f)*
                            math::scale(cw, ch, 1.0f)};
 
         graphics::bind_vertex_array(canvas_vao);
