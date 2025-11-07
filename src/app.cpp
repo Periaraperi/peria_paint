@@ -14,6 +14,10 @@ namespace {
 
 constexpr int MAX_FPS {500};
 
+[[nodiscard]]
+float lerp(float a, float b, float t) noexcept
+{ return a*(1.0f - t) + b*t; }
+
 }
 
 namespace peria {
@@ -81,7 +85,8 @@ application::application(application_settings&& settings)
      canvas{gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)},
             gl::sampler{graphics::create_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
             400, 300, {}, {}, {}, graphics::WHITE},
-     temp_canvas{{gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)}}, {}, 400, 300}
+     temp_canvas{{gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)}}, {}, 400, 300},
+     line_shader{"./assets/shaders/line.vert", "./assets/shaders/line.frag"}
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
@@ -146,6 +151,10 @@ application::application(application_settings&& settings)
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
         canvas.pos_x = 0.5f*(static_cast<float>(graphics::get_screen_size().w));
         canvas.pos_y = 0.5f*(static_cast<float>(graphics::get_screen_size().h));
+
+        // TEST STUFF
+        {
+        }
     }
 
     cpx.reserve(1024);
@@ -178,7 +187,6 @@ void application::run()
     
         // milliseconds
         if (const auto t{(1.0f/MAX_FPS)*1000.0f}; static_cast<float>(elapsed_time) < t) {
-            //std::println("unda shevisvenot, dzaan swrapia {}", t-static_cast<float>(elapsed_time));
             SDL_Delay(static_cast<uint32_t>(t-static_cast<float>(elapsed_time)));
             elapsed_time = static_cast<uint32_t>(t);
         }
@@ -208,7 +216,13 @@ void application::run()
         }
 
         update(dt);
-        draw();
+        
+        if (0) {
+            draw();
+        }
+        else {
+            test_draw();
+        }
 
         SDL_GL_SwapWindow(sdl_initializer_.window);
         info.mouse_moved = false;
@@ -307,7 +321,25 @@ void application::update(float dt)
             cpy.emplace_back(my-canvas_lower_left_y);
             cpr.emplace_back(info.brush_size*0.5f);
             info.should_draw = true;
+            info.should_empty = false;
         }
+
+        if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
+            cpx.emplace_back(mx-canvas_lower_left_x);
+            cpy.emplace_back(my-canvas_lower_left_y);
+            cpr.emplace_back(info.brush_size*0.5f);
+            info.should_draw = true;
+            info.should_empty = true;
+        }
+    }
+
+    if (im->key_down(SDL_SCANCODE_LSHIFT) && im->mouse_pressed(mouse_button::LEFT)) {
+        test_data.lines.push_back({mx, my});
+    }
+    if (im->key_down(SDL_SCANCODE_LSHIFT) && im->mouse_released(mouse_button::LEFT)) {
+        test_data.lines.back().x2 = mx;
+        test_data.lines.back().y2 = my;
+        test_data.should_do = true;
     }
 
 }
@@ -351,6 +383,7 @@ void application::draw()
         graphics::bind_vertex_array(vao);
         circle_shader.use_shader();
 
+        std::println("{}", cpx.size());
         for (std::size_t i{}; i<cpx.size(); ++i) {
             math::mat4f m {math::translate(cpx[i], cpy[i], 0.0f)*
                            math::scale(cpr[i]*2, cpr[i]*2, 1.0f)};
@@ -359,9 +392,12 @@ void application::draw()
             circle_shader.set_vec2("u_center_world", cpx[i], cpy[i]);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
-        cpx.clear();
-        cpy.clear();
-        cpr.clear();
+
+        if (info.should_empty) {
+            cpx.clear();
+            cpy.clear();
+            cpr.clear();
+        }
     }
 
     // Last pass to render canvas on a quad and position it in the world based on world pos and world offset.
@@ -383,5 +419,51 @@ void application::draw()
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     }
 }
+
+// THIS is purely for experimenting and testing shaders, different shapes,
+// and different approaches
+void application::test_draw()
+{
+    graphics::bind_frame_buffer_default();
+    graphics::clear_buffer_all(0, graphics::TEAL, 1.0f, 0);
+    graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
+
+    const auto [mx, my] {input_manager::instance()->get_mouse_gl()};
+    const auto r {5.0f};
+
+    graphics::bind_vertex_array(vao);
+    circle_shader.use_shader();
+
+    math::mat4f model {math::translate(mx, my, 0.0f)*
+                       math::scale(r*2, r*2, 1.0f)};
+    circle_shader.set_mat4("u_mvp", window_projection*model);
+    circle_shader.set_float("u_radius", r);
+    circle_shader.set_vec2("u_center_world", mx, my);
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+    graphics::bind_vertex_array(line_vao);
+    line_shader.use_shader();
+    line_shader.set_vec4("u_line_color", graphics::color{0.54f, 0.52f, 0.2f, 1.0f});
+    line_shader.set_mat4("u_mvp", window_projection);
+
+    if (test_data.should_do) {
+        std::vector<gl::vertex<gl::pos2>> ls; ls.reserve(test_data.lines.size());
+        for (std::size_t i{}; i<test_data.lines.size(); ++i) {
+            ls.push_back({{test_data.lines[i].x1, test_data.lines[i].y1}});
+            ls.push_back({{test_data.lines[i].x2, test_data.lines[i].y2}});
+        }
+        line_vbo = gl::named_buffer{};
+        graphics::buffer_upload_data(line_vbo, ls, GL_STATIC_DRAW);
+        graphics::vao_configure<gl::pos2>(line_vao, line_vbo, 0);
+        std::println("{}", ls.size());
+        test_data.should_do = false;
+    }
+
+    glLineWidth(11.0f);
+    glDrawArrays(GL_LINES, 0, static_cast<int>(test_data.lines.size()*2));
+}
+
+
 
 }

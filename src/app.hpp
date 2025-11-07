@@ -57,6 +57,7 @@ private:
 
     void update(float dt);
     void draw();
+    void test_draw();
 
     // gl entities.
     gl::shader circle_shader;
@@ -98,6 +99,7 @@ private:
         float resize_speed {100.0f};
         float brush_size {10.0f};
         bool should_draw {false};
+        bool should_empty {false};
         bool init {true};
         bool resized {true};
     } info;
@@ -106,6 +108,19 @@ private:
     std::vector<float> cpy;
     std::vector<float> cpr;
 
+    struct test_data {
+        struct line {
+            float x1 {}, y1 {};
+            float x2 {}, y2 {};
+        };
+
+        bool should_do {false};
+        std::vector<line> lines;
+    } test_data;
+
+    gl::vertex_array line_vao;
+    gl::named_buffer line_vbo;
+    gl::shader line_shader;
 };
 
 }
