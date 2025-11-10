@@ -114,13 +114,30 @@ private:
             float x2 {}, y2 {};
         };
 
+        struct quad {
+            float x1 {}, y1 {};
+            float x2 {}, y2 {};
+            float x3 {}, y3 {};
+            float x4 {}, y4 {};
+            float thickness {5.0f};
+            float len {};
+        };
+
         bool should_do {false};
         std::vector<line> lines;
+        std::vector<quad> quads; // treat as quad
+        line ll {};
     } test_data;
 
     gl::vertex_array line_vao;
     gl::named_buffer line_vbo;
+    gl::named_buffer line_ibo;
     gl::shader line_shader;
+
+    gl::vertex_array line_v2_vao;
+    gl::named_buffer line_v2_vbo;
+    gl::shader line_v2_shader;
+
 };
 
 }

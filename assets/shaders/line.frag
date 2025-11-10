@@ -1,4 +1,4 @@
-#version 460
+#version 460 core
 
 uniform vec4 u_line_color;
 

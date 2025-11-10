@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 #include <chrono>
+#include <cmath>
 #include <glad/glad.h>
 
 #include <print>
@@ -86,7 +87,8 @@ application::application(application_settings&& settings)
             gl::sampler{graphics::create_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
             400, 300, {}, {}, {}, graphics::WHITE},
      temp_canvas{{gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)}}, {}, 400, 300},
-     line_shader{"./assets/shaders/line.vert", "./assets/shaders/line.frag"}
+     line_shader{"./assets/shaders/line.vert", "./assets/shaders/line.frag"},
+     line_v2_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"}
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
@@ -217,7 +219,7 @@ void application::run()
 
         update(dt);
         
-        if (1) {
+        if (0) {
             draw();
         }
         else {
@@ -342,6 +344,43 @@ void application::update(float dt)
     if (im->key_down(SDL_SCANCODE_LSHIFT) && im->mouse_released(mouse_button::LEFT)) {
         test_data.lines.back().x2 = mx;
         test_data.lines.back().y2 = my;
+
+        const auto line {test_data.lines.back()};
+
+        // move to origin
+        const float vec_x {line.x2-line.x1};
+        const float vec_y {line.y2-line.y1};
+
+        const float len {std::sqrt(vec_x*vec_x+vec_y*vec_y)};
+        const float dir_x {1.0f/len};
+        const float dir_y {1.0f/len};
+
+        const float dir_x_90 {-dir_y};
+        const float dir_y_90 {dir_x};
+
+        const float lower_left_x {line.x1 - 500.0f*info.brush_size*0.5f*dir_x_90};
+        const float lower_left_y {line.y1 - 500.0f*info.brush_size*0.5f*dir_y_90};
+
+        const float upper_left_x {line.x1 + 500.0f*info.brush_size*0.5f*dir_x_90};
+        const float upper_left_y {line.y1 + 500.0f*info.brush_size*0.5f*dir_y_90};
+
+        const float upper_right_x {line.x2 + 500.0f*info.brush_size*0.5f*dir_x_90};
+        const float upper_right_y {line.y2 + 500.0f*info.brush_size*0.5f*dir_y_90};
+
+        const float lower_right_x {line.x2 - 500.0f*info.brush_size*0.5f*dir_x_90};
+        const float lower_right_y {line.y2 - 500.0f*info.brush_size*0.5f*dir_y_90};
+        
+        test_data::quad q {
+            lower_left_x, lower_left_y, 
+            upper_left_x, upper_left_y, 
+            upper_right_x, upper_right_y,
+            lower_right_x, lower_right_y,
+            info.brush_size,
+            len
+        };
+
+        test_data.quads.push_back(std::move(q));
+
         test_data.should_do = true;
     }
 
@@ -465,26 +504,66 @@ void application::test_draw()
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
-    graphics::bind_vertex_array(line_vao);
-    line_shader.use_shader();
-    line_shader.set_vec4("u_line_color", graphics::color{0.54f, 0.52f, 0.2f, 1.0f});
-    line_shader.set_mat4("u_mvp", window_projection);
+    //graphics::bind_vertex_array(line_vao);
+    //line_shader.use_shader();
+    //line_shader.set_vec4("u_line_color", graphics::color{0.54f, 0.52f, 0.2f, 1.0f});
+    //line_shader.set_mat4("u_mvp", window_projection);
 
+    line_v2_shader.use_shader();
+    line_v2_shader.set_mat4("u_mvp", window_projection);
+    std::vector<u32> libo;
     if (test_data.should_do) {
-        std::vector<gl::vertex<gl::pos2>> ls; ls.reserve(test_data.lines.size());
-        for (std::size_t i{}; i<test_data.lines.size(); ++i) {
-            ls.push_back({{test_data.lines[i].x1, test_data.lines[i].y1}});
-            ls.push_back({{test_data.lines[i].x2, test_data.lines[i].y2}});
+        std::vector<gl::vertex<gl::pos2, gl::color4>> ls; ls.reserve(test_data.quads.size());
+        for (std::size_t i{}; i<test_data.quads.size(); ++i) {
+            ls.push_back({{test_data.quads[i].x1, test_data.quads[i].y1}, {0.54f, 0.52f, 0.2f, 1.0f}});
+            ls.push_back({{test_data.quads[i].x2, test_data.quads[i].y2}, {0.54f, 0.52f, 0.2f, 1.0f}});
+            ls.push_back({{test_data.quads[i].x3, test_data.quads[i].y3}, {0.54f, 0.52f, 0.2f, 1.0f}});
+            ls.push_back({{test_data.quads[i].x4, test_data.quads[i].y4}, {0.54f, 0.52f, 0.2f, 1.0f}});
         }
-        line_vbo = gl::named_buffer{};
-        graphics::buffer_upload_data(line_vbo, ls, GL_STATIC_DRAW);
-        graphics::vao_configure<gl::pos2>(line_vao, line_vbo, 0);
-        std::println("{}", ls.size());
+        line_v2_vbo = gl::named_buffer{};
+        line_ibo = gl::named_buffer{};
+        graphics::buffer_upload_data(line_v2_vbo, ls, GL_STATIC_DRAW);
+        graphics::vao_configure<gl::pos2, gl::color4>(line_v2_vao, line_v2_vbo, 0);
+        for (std::size_t i{}, k{}; i<test_data.quads.size(); ++i, k+=4) {
+            libo.emplace_back(k);
+            libo.emplace_back(k+1);
+            libo.emplace_back(k+2);
+
+            libo.emplace_back(k);
+            libo.emplace_back(k+2);
+            libo.emplace_back(k+3);
+        }
+        graphics::buffer_upload_data(line_ibo, libo, GL_STATIC_DRAW);
+        graphics::vao_connect_ibo(line_v2_vao, line_ibo);
+
+       // std::vector<gl::vertex<gl::pos2>> ls; ls.reserve(test_data.lines.size());
+       // for (std::size_t i{}; i<test_data.lines.size(); ++i) {
+       //     ls.push_back({{test_data.lines[i].x1, test_data.lines[i].y1}});
+       //     ls.push_back({{test_data.lines[i].x2, test_data.lines[i].y2}});
+       // }
+       // line_vbo = gl::named_buffer{};
+       // graphics::buffer_upload_data(line_vbo, ls, GL_STATIC_DRAW);
+       // graphics::vao_configure<gl::pos2>(line_vao, line_vbo, 0);
+       // std::println("{}", ls.size());
         test_data.should_do = false;
     }
+    graphics::bind_vertex_array(line_v2_vao);
+    glDrawElements(GL_TRIANGLES, static_cast<int>(test_data.quads.size()*6), GL_UNSIGNED_INT, nullptr);
 
-    glLineWidth(11.0f);
-    glDrawArrays(GL_LINES, 0, static_cast<int>(test_data.lines.size()*2));
+    //glLineWidth(11.0f);
+    //glDrawArrays(GL_LINES, 0, static_cast<int>(test_data.lines.size()*2));
+
+    //std::array<gl::vertex<gl::pos2>, 2> yle {{
+    //    {{canvas.width*0.5f, canvas.height*0.5f}},
+    //    {{mx, my}}
+    //}};
+    //line_v2_vbo = gl::named_buffer{};
+    //graphics::buffer_upload_data(line_v2_vbo, yle, GL_STATIC_DRAW);
+    //graphics::vao_configure<gl::pos2>(line_v2_vao, line_v2_vbo, 0);
+
+    //graphics::bind_vertex_array(line_v2_vao);
+    //glLineWidth(7.0f);
+    //glDrawArrays(GL_LINES, 0, 2);
 }
 
 
