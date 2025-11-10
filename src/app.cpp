@@ -217,7 +217,7 @@ void application::run()
 
         update(dt);
         
-        if (0) {
+        if (1) {
             draw();
         }
         else {
@@ -251,6 +251,9 @@ void application::update(float dt)
         info.brush_size -= 10.0f*dt;
         info.brush_size = std::max(info.brush_size, 2.0f);
     }
+
+    glLineWidth(info.brush_size);
+
     if (im->key_pressed(SDL_SCANCODE_V)) {
         graphics::set_vsync(!graphics::is_vsync());
     }
@@ -393,6 +396,26 @@ void application::draw()
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
 
+        std::vector<gl::vertex<gl::pos2>> ls; ls.reserve(cpx.size());
+        for (std::size_t i{1}; i<cpx.size(); ++i) {
+            const auto x1 {cpx[i-1]};
+            const auto y1 {cpy[i-1]};
+            const auto x2 {cpx[i]};
+            const auto y2 {cpy[i]};
+            ls.push_back({{x1, y1}});
+            ls.push_back({{x2, y2}});
+        }
+        line_vbo = gl::named_buffer{};
+        graphics::buffer_upload_data(line_vbo, ls, GL_STATIC_DRAW);
+        graphics::vao_configure<gl::pos2>(line_vao, line_vbo, 0);
+        std::println("{}", ls.size());
+
+        graphics::bind_vertex_array(line_vao);
+        line_shader.use_shader();
+        line_shader.set_vec4("u_line_color", graphics::color{0.0f, 0.1f, 0.1f, 1.0f});
+        line_shader.set_mat4("u_mvp", canvas.projection);
+        glDrawArrays(GL_LINES, 0, static_cast<int>(ls.size()));
+
         if (info.should_empty) {
             cpx.clear();
             cpy.clear();
@@ -463,7 +486,6 @@ void application::test_draw()
     glLineWidth(11.0f);
     glDrawArrays(GL_LINES, 0, static_cast<int>(test_data.lines.size()*2));
 }
-
 
 
 }
