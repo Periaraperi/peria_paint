@@ -108,6 +108,15 @@ private:
     std::vector<float> cpy;
     std::vector<float> cpr;
 
+    struct line {
+        float x1 {}, y1 {};
+        float x2 {}, y2 {};
+        float thickness_1 {};
+        float thickness_2 {};
+    };
+    std::vector<line> lines;
+
+    /*
     struct test_data {
         struct line {
             float x1 {}, y1 {};
@@ -128,6 +137,7 @@ private:
         std::vector<quad> quads; // treat as quad
         line ll {};
     } test_data;
+    */
 
     gl::vertex_array line_vao;
     gl::named_buffer line_vbo;
