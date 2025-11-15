@@ -14,7 +14,7 @@ vertex_array::vertex_array() noexcept
 { std::println("vertex_array ctor()"); glCreateVertexArrays(1, &id); }
 
 vertex_array::~vertex_array()
-{ std::println("vertex_array ctor()"); glDeleteVertexArrays(1, &id); }
+{ std::println("vertex_array dtor()"); glDeleteVertexArrays(1, &id); }
 
 vertex_array::vertex_array(vertex_array&& rhs) noexcept
     :id{std::exchange(rhs.id, 0)}

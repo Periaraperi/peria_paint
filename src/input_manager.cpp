@@ -33,7 +33,7 @@ input_manager::~input_manager()
 void input_manager::initialize() noexcept
 {
     if (!instance_ptr_) instance_ptr_ = new input_manager{};
-    else std::print("input manager instance already initialized");
+    else std::println("input manager instance already initialized");
 }
 
 void input_manager::shutdown() noexcept

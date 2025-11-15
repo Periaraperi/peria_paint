@@ -13,7 +13,13 @@
 
 namespace {
 
+constexpr bool TESTING {true};
 constexpr int MAX_FPS {500};
+struct point {
+    float x;
+    float y;
+};
+std::vector<point> ps;
 
 [[nodiscard]]
 float lerp(float a, float b, float t) noexcept
@@ -219,11 +225,11 @@ void application::run()
 
         update(dt);
         
-        if (1) {
-            draw();
+        if (TESTING) {
+            test_draw();
         }
         else {
-            test_draw();
+            draw();
         }
 
         SDL_GL_SwapWindow(sdl_initializer_.window);
@@ -238,12 +244,18 @@ void application::run()
         input_manager_->update_prev_state();
     }
 }
-
 void application::update(float dt)
 {
     const auto im {input_manager::instance()};
     const auto [mx, my] {im->get_mouse_gl()};
     info.should_draw = false;
+
+    if (TESTING) {
+        if (im->mouse_pressed(mouse_button::LEFT)) {
+            ps.emplace_back(point{mx, my});
+        }
+        return;
+    }
 
     if (im->key_down(SDL_SCANCODE_W)) {
         info.brush_size += 10.0f*dt;
@@ -535,7 +547,39 @@ void application::test_draw()
 
     const auto [mx, my] {input_manager::instance()->get_mouse_gl()};
     const auto r {5.0f};
+    
+    std::vector<point> samples;
+    for (float t{}; t<=1.0f; t+=0.25f) {
+        for (std::size_t i{}; i+2<ps.size(); ++i) {
+            auto a {point{lerp(ps[i].x, ps[i+1].x, t), lerp(ps[i].y, ps[i+1].y, t)}};
+            auto b {point{lerp(ps[i+1].x, ps[i+2].x, t), lerp(ps[i+1].y, ps[i+2].y, t)}};
+            samples.emplace_back(point{lerp(a.x, b.x, t), lerp(a.y, b.y, t)});
+        }
+    }
 
+    graphics::bind_vertex_array(vao);
+    circle_shader.use_shader();
+
+    for (std::size_t i{}; i<ps.size(); ++i) {
+        math::mat4f m {math::translate(ps[i].x, ps[i].y, 0.0f)*
+                       math::scale(r*2, r*2, 1.0f)};
+        circle_shader.set_mat4("u_mvp", window_projection*m);
+        circle_shader.set_float("u_radius", r);
+        circle_shader.set_vec2("u_center_world", ps[i].x, ps[i].y);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+    }
+
+    for (std::size_t i{}; i<samples.size(); ++i) {
+        math::mat4f m {math::translate(samples[i].x, samples[i].y, 0.0f)*
+                       math::scale(r*2, r*2, 1.0f)};
+        circle_shader.set_mat4("u_mvp", window_projection*m);
+        circle_shader.set_float("u_radius", r);
+        circle_shader.set_vec2("u_center_world", samples[i].x, samples[i].y);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+    }
+
+
+    /*
     graphics::bind_vertex_array(vao);
     circle_shader.use_shader();
 
@@ -547,66 +591,67 @@ void application::test_draw()
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
-    //graphics::bind_vertex_array(line_vao);
-    //line_shader.use_shader();
-    //line_shader.set_vec4("u_line_color", graphics::color{0.54f, 0.52f, 0.2f, 1.0f});
-    //line_shader.set_mat4("u_mvp", window_projection);
+    graphics::bind_vertex_array(line_vao);
+    line_shader.use_shader();
+    line_shader.set_vec4("u_line_color", graphics::color{0.54f, 0.52f, 0.2f, 1.0f});
+    line_shader.set_mat4("u_mvp", window_projection);
 
     line_v2_shader.use_shader();
     line_v2_shader.set_mat4("u_mvp", window_projection);
     std::vector<u32> libo;
-    //if (test_data.should_do) {
-    //    std::vector<gl::vertex<gl::pos2, gl::color4>> ls; ls.reserve(test_data.quads.size());
-    //    for (std::size_t i{}; i<test_data.quads.size(); ++i) {
-    //        ls.push_back({{test_data.quads[i].x1, test_data.quads[i].y1}, {0.54f, 0.52f, 0.2f, 1.0f}});
-    //        ls.push_back({{test_data.quads[i].x2, test_data.quads[i].y2}, {0.54f, 0.52f, 0.2f, 1.0f}});
-    //        ls.push_back({{test_data.quads[i].x3, test_data.quads[i].y3}, {0.54f, 0.52f, 0.2f, 1.0f}});
-    //        ls.push_back({{test_data.quads[i].x4, test_data.quads[i].y4}, {0.54f, 0.52f, 0.2f, 1.0f}});
-    //    }
-    //    line_v2_vbo = gl::named_buffer{};
-    //    line_ibo = gl::named_buffer{};
-    //    graphics::buffer_upload_data(line_v2_vbo, ls, GL_STATIC_DRAW);
-    //    graphics::vao_configure<gl::pos2, gl::color4>(line_v2_vao, line_v2_vbo, 0);
-    //    for (std::size_t i{}, k{}; i<test_data.quads.size(); ++i, k+=4) {
-    //        libo.emplace_back(k);
-    //        libo.emplace_back(k+1);
-    //        libo.emplace_back(k+2);
+    if (test_data.should_do) {
+        std::vector<gl::vertex<gl::pos2, gl::color4>> ls; ls.reserve(test_data.quads.size());
+        for (std::size_t i{}; i<test_data.quads.size(); ++i) {
+            ls.push_back({{test_data.quads[i].x1, test_data.quads[i].y1}, {0.54f, 0.52f, 0.2f, 1.0f}});
+            ls.push_back({{test_data.quads[i].x2, test_data.quads[i].y2}, {0.54f, 0.52f, 0.2f, 1.0f}});
+            ls.push_back({{test_data.quads[i].x3, test_data.quads[i].y3}, {0.54f, 0.52f, 0.2f, 1.0f}});
+            ls.push_back({{test_data.quads[i].x4, test_data.quads[i].y4}, {0.54f, 0.52f, 0.2f, 1.0f}});
+        }
+        line_v2_vbo = gl::named_buffer{};
+        line_ibo = gl::named_buffer{};
+        graphics::buffer_upload_data(line_v2_vbo, ls, GL_STATIC_DRAW);
+        graphics::vao_configure<gl::pos2, gl::color4>(line_v2_vao, line_v2_vbo, 0);
+        for (std::size_t i{}, k{}; i<test_data.quads.size(); ++i, k+=4) {
+            libo.emplace_back(k);
+            libo.emplace_back(k+1);
+            libo.emplace_back(k+2);
 
-    //        libo.emplace_back(k);
-    //        libo.emplace_back(k+2);
-    //        libo.emplace_back(k+3);
-    //    }
-    //    graphics::buffer_upload_data(line_ibo, libo, GL_STATIC_DRAW);
-    //    graphics::vao_connect_ibo(line_v2_vao, line_ibo);
+            libo.emplace_back(k);
+            libo.emplace_back(k+2);
+            libo.emplace_back(k+3);
+        }
+        graphics::buffer_upload_data(line_ibo, libo, GL_STATIC_DRAW);
+        graphics::vao_connect_ibo(line_v2_vao, line_ibo);
 
-    //   // std::vector<gl::vertex<gl::pos2>> ls; ls.reserve(test_data.lines.size());
-    //   // for (std::size_t i{}; i<test_data.lines.size(); ++i) {
-    //   //     ls.push_back({{test_data.lines[i].x1, test_data.lines[i].y1}});
-    //   //     ls.push_back({{test_data.lines[i].x2, test_data.lines[i].y2}});
-    //   // }
-    //   // line_vbo = gl::named_buffer{};
-    //   // graphics::buffer_upload_data(line_vbo, ls, GL_STATIC_DRAW);
-    //   // graphics::vao_configure<gl::pos2>(line_vao, line_vbo, 0);
-    //   // std::println("{}", ls.size());
-    //    test_data.should_do = false;
-    //}
-    //graphics::bind_vertex_array(line_v2_vao);
-    //glDrawElements(GL_TRIANGLES, static_cast<int>(test_data.quads.size()*6), GL_UNSIGNED_INT, nullptr);
+       // std::vector<gl::vertex<gl::pos2>> ls; ls.reserve(test_data.lines.size());
+       // for (std::size_t i{}; i<test_data.lines.size(); ++i) {
+       //     ls.push_back({{test_data.lines[i].x1, test_data.lines[i].y1}});
+       //     ls.push_back({{test_data.lines[i].x2, test_data.lines[i].y2}});
+       // }
+       // line_vbo = gl::named_buffer{};
+       // graphics::buffer_upload_data(line_vbo, ls, GL_STATIC_DRAW);
+       // graphics::vao_configure<gl::pos2>(line_vao, line_vbo, 0);
+       // std::println("{}", ls.size());
+        test_data.should_do = false;
+    }
+    graphics::bind_vertex_array(line_v2_vao);
+    glDrawElements(GL_TRIANGLES, static_cast<int>(test_data.quads.size()*6), GL_UNSIGNED_INT, nullptr);
 
-    //glLineWidth(11.0f);
-    //glDrawArrays(GL_LINES, 0, static_cast<int>(test_data.lines.size()*2));
+    glLineWidth(11.0f);
+    glDrawArrays(GL_LINES, 0, static_cast<int>(test_data.lines.size()*2));
 
-    //std::array<gl::vertex<gl::pos2>, 2> yle {{
-    //    {{canvas.width*0.5f, canvas.height*0.5f}},
-    //    {{mx, my}}
-    //}};
-    //line_v2_vbo = gl::named_buffer{};
-    //graphics::buffer_upload_data(line_v2_vbo, yle, GL_STATIC_DRAW);
-    //graphics::vao_configure<gl::pos2>(line_v2_vao, line_v2_vbo, 0);
+    std::array<gl::vertex<gl::pos2>, 2> yle {{
+        {{canvas.width*0.5f, canvas.height*0.5f}},
+        {{mx, my}}
+    }};
+    line_v2_vbo = gl::named_buffer{};
+    graphics::buffer_upload_data(line_v2_vbo, yle, GL_STATIC_DRAW);
+    graphics::vao_configure<gl::pos2>(line_v2_vao, line_v2_vbo, 0);
 
-    //graphics::bind_vertex_array(line_v2_vao);
-    //glLineWidth(7.0f);
-    //glDrawArrays(GL_LINES, 0, 2);
+    graphics::bind_vertex_array(line_v2_vao);
+    glLineWidth(7.0f);
+    glDrawArrays(GL_LINES, 0, 2);
+    */
 }
 
 

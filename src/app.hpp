@@ -147,7 +147,6 @@ private:
     gl::vertex_array line_v2_vao;
     gl::named_buffer line_v2_vbo;
     gl::shader line_v2_shader;
-
 };
 
 }
