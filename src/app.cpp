@@ -13,11 +13,13 @@
 
 namespace {
 
-constexpr bool TESTING {true};
+constexpr bool TESTING {false};
+constexpr bool kek {true};
 constexpr int MAX_FPS {500};
 struct point {
     float x;
     float y;
+    float r;
 };
 std::vector<point> ps;
 
@@ -103,9 +105,8 @@ application::application(application_settings&& settings)
 
     {
         //TODO: come back to these settings later
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glEnable(GL_DEPTH_TEST);
+        //glEnable(GL_BLEND);
+        //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         peria::graphics::set_vsync(true);
         peria::graphics::set_relative_mouse(sdl_initializer_.window, false);
@@ -168,6 +169,9 @@ application::application(application_settings&& settings)
     cpx.reserve(1024);
     cpy.reserve(1024);
     cpr.reserve(1024);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 application::~application()
@@ -439,6 +443,7 @@ void application::draw()
         graphics::bind_vertex_array(vao);
         circle_shader.use_shader();
 
+        circle_shader.set_vec4("u_color", graphics::color{0,0,0,1});
         std::println("{}", cpx.size());
         for (std::size_t i{}; i<cpx.size(); ++i) {
             math::mat4f m {math::translate(cpx[i], cpy[i], 0.0f)*
@@ -449,16 +454,59 @@ void application::draw()
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
 
+        // DRAWS SPLINES BETWEEN MOUSE POINTS (Catmull-Rom)
+        auto get_point = [this](float t) {
+            // indices of 2 control points and 2 points on a curve
+            std::size_t p1 {static_cast<std::size_t>(t)+1};
+            std::size_t p2 {p1+1};
+            std::size_t p3 {p2+1};
+            std::size_t p0 {p1-1};
+
+            t = t - (float)static_cast<int>(t);
+
+            float tt {t*t};
+            float ttt {tt*t};
+
+            // contributions based on some predefined cubic functions
+            float c1 {-ttt + 2.0f*tt - t};
+            float c2 {3.0f*ttt - 5.0f*tt + 2.0f};
+            float c3 {-3.0f*ttt + 4.0f*tt + t};
+            float c4 {ttt-tt};
+
+            float r {lerp(cpr[p1], cpr[p2], t)};
+            std::println("{}", r);
+
+            return point {
+                0.5f * (c1*cpx[p0] + c2*cpx[p1] + c3*cpx[p2] + c4*cpx[p3]),
+                0.5f * (c1*cpy[p0] + c2*cpy[p1] + c3*cpy[p2] + c4*cpy[p3]),
+                r
+            };
+        };
+
+        std::vector<point> samples;
+        for (float t{}; t<static_cast<float>(cpx.size())-3.0f; t+=0.1f) {
+            samples.emplace_back(get_point(t));
+        }
+
+        for (std::size_t i{}; i<samples.size(); ++i) {
+            math::mat4f m {math::translate(samples[i].x, samples[i].y, 0.0f)*
+                           math::scale(samples[i].r*2, samples[i].r*2, 1.0f)};
+            circle_shader.set_mat4("u_mvp", canvas.projection*m);
+            circle_shader.set_float("u_radius", samples[i].r);
+            circle_shader.set_vec2("u_center_world", samples[i].x, samples[i].y);
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        }
+        //DRAWS LINES BETWEEN MOUSE POINTS
         std::vector<gl::vertex<gl::pos2, gl::color4>> ls; 
         ls.reserve(cpx.size());
 
-        for (std::size_t i{1}; i<cpx.size(); ++i) {
-            const auto& x1 {cpx[i-1]};
-            const auto& y1 {cpy[i-1]};
-            const auto& t1 {cpr[i-1]};
-            const auto& x2 {cpx[i]};
-            const auto& y2 {cpy[i]};
-            const auto& t2 {cpr[i]};
+        auto add_line = [&ls](const point& p1, const point& p2) {
+            const auto& x1 {p1.x};
+            const auto& y1 {p1.y};
+            const auto& t1 {p1.r};
+            const auto& x2 {p2.x};
+            const auto& y2 {p2.y};
+            const auto& t2 {p2.r};
 
             const float vec_x {x2-x1};
             const float vec_y {y2-y1};
@@ -484,6 +532,44 @@ void application::draw()
             ls.push_back({{upper_left_x,  upper_left_y }, {0.0f, 0.0f, 0.0f, 1}});
             ls.push_back({{upper_right_x, upper_right_y}, {0.0f, 0.0f, 0.0f, 1}});
             ls.push_back({{lower_right_x, lower_right_y}, {0.0f, 0.0f, 0.0f, 1}});
+        };
+
+        for (std::size_t i{1}; i<samples.size(); ++i) {
+            const auto& x1 {samples[i-1].x};
+            const auto& y1 {samples[i-1].y};
+            const auto& t1 {samples[i-1].r};
+            const auto& x2 {samples[i].x};
+            const auto& y2 {samples[i].y};
+            const auto& t2 {samples[i].r};
+
+            const float vec_x {x2-x1};
+            const float vec_y {y2-y1};
+            const float len {std::sqrt(vec_x*vec_x+vec_y*vec_y)};
+            const float dir_x {vec_x/len};
+            const float dir_y {vec_y/len};
+            const float dir_x_90 {-dir_y};
+            const float dir_y_90 {dir_x};
+
+            const float lower_left_x {x1 - t1*dir_x_90};
+            const float lower_left_y {y1 - t1*dir_y_90};
+
+            const float upper_left_x {x1 + t1*dir_x_90};
+            const float upper_left_y {y1 + t1*dir_y_90};
+
+            const float upper_right_x {x2 + t2*dir_x_90};
+            const float upper_right_y {y2 + t2*dir_y_90};
+
+            const float lower_right_x {x2 - t2*dir_x_90};
+            const float lower_right_y {y2 - t2*dir_y_90};
+
+            ls.push_back({{lower_left_x,  lower_left_y }, {0.0f, 0.0f, 0.0f, 1}});
+            ls.push_back({{upper_left_x,  upper_left_y }, {0.0f, 0.0f, 0.0f, 1}});
+            ls.push_back({{upper_right_x, upper_right_y}, {0.0f, 0.0f, 0.0f, 1}});
+            ls.push_back({{lower_right_x, lower_right_y}, {0.0f, 0.0f, 0.0f, 1}});
+        }
+        if (cpx.size() >= 2 && samples.size() >= 2) {
+            add_line({cpx[0], cpy[0], cpr[0]}, samples[0]);
+            add_line(samples.back(), {cpx.back(), cpy.back(), cpr.back()});
         }
 
         line_v2_vbo = gl::named_buffer{};
@@ -546,20 +632,51 @@ void application::test_draw()
     graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
 
     const auto [mx, my] {input_manager::instance()->get_mouse_gl()};
-    const auto r {5.0f};
-    
+    const auto r {10.0f};
+
+    auto get_point = [](float t) {
+        // indices of 2 control points and 2 points on a curve
+        std::size_t p1 {static_cast<std::size_t>(t)+1};
+        std::size_t p2 {p1+1};
+        std::size_t p3 {p2+1};
+        std::size_t p0 {p1-1};
+
+        t = t - (float)static_cast<int>(t);
+
+        float tt {t*t};
+        float ttt {tt*t};
+
+        // contributions based on some predefined cubic functions
+        float c1 {-ttt + 2.0f*tt - t};
+        float c2 {3.0f*ttt - 5.0f*tt + 2.0f};
+        float c3 {-3.0f*ttt + 4.0f*tt + t};
+        float c4 {ttt-tt};
+
+        return point {
+            0.5f * (c1*ps[p0].x + c2*ps[p1].x + c3*ps[p2].x + c4*ps[p3].x),
+            0.5f * (c1*ps[p0].y + c2*ps[p1].y + c3*ps[p2].y + c4*ps[p3].y),
+        };
+    };
+
     std::vector<point> samples;
-    for (float t{}; t<=1.0f; t+=0.25f) {
-        for (std::size_t i{}; i+2<ps.size(); ++i) {
+    for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=0.05f) {
+        samples.emplace_back(get_point(t));
+    }
+    /*
+    std::vector<point> samples;
+    for (float t{}; t<=1.0f; t+=0.005f) {
+        for (std::size_t i{}; i+2<ps.size(); i+=2) {
             auto a {point{lerp(ps[i].x, ps[i+1].x, t), lerp(ps[i].y, ps[i+1].y, t)}};
             auto b {point{lerp(ps[i+1].x, ps[i+2].x, t), lerp(ps[i+1].y, ps[i+2].y, t)}};
             samples.emplace_back(point{lerp(a.x, b.x, t), lerp(a.y, b.y, t)});
         }
     }
+    */
 
     graphics::bind_vertex_array(vao);
     circle_shader.use_shader();
 
+    circle_shader.set_vec4("u_color", graphics::color{0,0,0,1});
     for (std::size_t i{}; i<ps.size(); ++i) {
         math::mat4f m {math::translate(ps[i].x, ps[i].y, 0.0f)*
                        math::scale(r*2, r*2, 1.0f)};
@@ -569,15 +686,76 @@ void application::test_draw()
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     }
 
+    circle_shader.set_vec4("u_color", graphics::color{0.5f,0.2f,0,1});
+    float r2 {5.0f};
     for (std::size_t i{}; i<samples.size(); ++i) {
         math::mat4f m {math::translate(samples[i].x, samples[i].y, 0.0f)*
-                       math::scale(r*2, r*2, 1.0f)};
+                       math::scale(r2*2, r2*2, 1.0f)};
         circle_shader.set_mat4("u_mvp", window_projection*m);
-        circle_shader.set_float("u_radius", r);
+        circle_shader.set_float("u_radius", r2);
         circle_shader.set_vec2("u_center_world", samples[i].x, samples[i].y);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     }
 
+    std::vector<gl::vertex<gl::pos2, gl::color4>> ls; 
+    ls.reserve(ps.size());
+
+    for (std::size_t i{1}; i<samples.size(); ++i) {
+        const auto& x1 {samples[i-1].x};
+        const auto& y1 {samples[i-1].y};
+        const auto& t1 {r2};
+        const auto& x2 {samples[i].x};
+        const auto& y2 {samples[i].y};
+        const auto& t2 {r2};
+
+        const float vec_x {x2-x1};
+        const float vec_y {y2-y1};
+        const float len {std::sqrt(vec_x*vec_x+vec_y*vec_y)};
+        const float dir_x {vec_x/len};
+        const float dir_y {vec_y/len};
+        const float dir_x_90 {-dir_y};
+        const float dir_y_90 {dir_x};
+
+        const float lower_left_x {x1 - t1*dir_x_90};
+        const float lower_left_y {y1 - t1*dir_y_90};
+
+        const float upper_left_x {x1 + t1*dir_x_90};
+        const float upper_left_y {y1 + t1*dir_y_90};
+
+        const float upper_right_x {x2 + t2*dir_x_90};
+        const float upper_right_y {y2 + t2*dir_y_90};
+
+        const float lower_right_x {x2 - t2*dir_x_90};
+        const float lower_right_y {y2 - t2*dir_y_90};
+
+        ls.push_back({{lower_left_x,  lower_left_y }, {0.5f,0.2f,0,1}});
+        ls.push_back({{upper_left_x,  upper_left_y }, {0.5f,0.2f,0,1}});
+        ls.push_back({{upper_right_x, upper_right_y}, {0.5f,0.2f,0,1}});
+        ls.push_back({{lower_right_x, lower_right_y}, {0.5f,0.2f,0,1}});
+    }
+
+    line_v2_vbo = gl::named_buffer{};
+    line_ibo = gl::named_buffer{};
+    graphics::buffer_upload_data(line_v2_vbo, ls, GL_STATIC_DRAW);
+    graphics::vao_configure<gl::pos2, gl::color4>(line_v2_vao, line_v2_vbo, 0);
+    std::vector<u32> libo;
+    for (std::size_t i{}, k{}; i<ls.size()/4; ++i, k+=4) {
+        libo.emplace_back(k);
+        libo.emplace_back(k+1);
+        libo.emplace_back(k+2);
+
+        libo.emplace_back(k);
+        libo.emplace_back(k+2);
+        libo.emplace_back(k+3);
+    }
+
+    graphics::buffer_upload_data(line_ibo, libo, GL_STATIC_DRAW);
+    graphics::vao_connect_ibo(line_v2_vao, line_ibo);
+
+    graphics::bind_vertex_array(line_v2_vao);
+    line_v2_shader.use_shader();
+    line_v2_shader.set_mat4("u_mvp", window_projection);
+    glDrawElements(GL_TRIANGLES, static_cast<int>(libo.size()), GL_UNSIGNED_INT, nullptr);
 
     /*
     graphics::bind_vertex_array(vao);
