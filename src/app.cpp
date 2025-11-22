@@ -11,12 +11,13 @@
 #include "input_manager.hpp"
 #include "graphics/graphics.hpp"
 
-// #TODO FIX A BUG - when mouse goes out of canvas and goes back in it does weird stuff
 namespace {
 
 constexpr bool TESTING {true};
 constexpr bool kek {true};
 constexpr int MAX_FPS {500};
+float uk {0.0f};
+float RADIUS {10.0f};
 struct point {
     float x;
     float y;
@@ -105,10 +106,6 @@ application::application(application_settings&& settings)
     input_manager::initialize();
 
     {
-        //TODO: come back to these settings later
-        //glEnable(GL_BLEND);
-        //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
         peria::graphics::set_vsync(true);
         peria::graphics::set_relative_mouse(sdl_initializer_.window, false);
         peria::graphics::set_screen_size(app_settings_.window_width, app_settings_.window_height);
@@ -161,10 +158,6 @@ application::application(application_settings&& settings)
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
         canvas.pos_x = 0.5f*(static_cast<float>(graphics::get_screen_size().w));
         canvas.pos_y = 0.5f*(static_cast<float>(graphics::get_screen_size().h));
-
-        // TEST STUFF
-        {
-        }
     }
 
     cpx.reserve(1024);
@@ -173,6 +166,12 @@ application::application(application_settings&& settings)
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+
+    graphics::bind_frame_buffer(canvas.buffer);
+    graphics::set_viewport(0, 0, canvas.width, canvas.height);
+    graphics::clear_buffer_color(canvas.buffer.id, canvas.bg_color);
+    info.init = false;
 }
 
 application::~application()
@@ -257,7 +256,22 @@ void application::update(float dt)
 
     if (TESTING) {
         if (im->mouse_pressed(mouse_button::LEFT)) {
-            ps.emplace_back(point{mx, my});
+            ps.emplace_back(point{mx, my, RADIUS});
+        }
+        if (im->key_down(SDL_SCANCODE_W)) {
+            RADIUS += 100.0f*dt;
+            RADIUS = std::min(RADIUS, 250.0f);
+        }
+        if (im->key_down(SDL_SCANCODE_E)) {
+            RADIUS -= 100.0f*dt;
+            RADIUS = std::max(RADIUS, 2.0f);
+        }
+        if (im->key_down(SDL_SCANCODE_LSHIFT) && im->key_down(SDL_SCANCODE_Q)) {
+            uk -= 100.0f*dt;
+            uk = std::max(0.0f, uk);
+        }
+        else if (im->key_down(SDL_SCANCODE_Q)) {
+            uk += 100.0f*dt;
         }
         return;
     }
@@ -354,67 +368,18 @@ void application::update(float dt)
             info.should_empty = true;
         }
     }
-
-    /* TEST STUFF
-    if (im->key_down(SDL_SCANCODE_LSHIFT) && im->mouse_pressed(mouse_button::LEFT)) {
-        test_data.lines.push_back({mx, my});
-    }
-    if (im->key_down(SDL_SCANCODE_LSHIFT) && im->mouse_released(mouse_button::LEFT)) {
-        test_data.lines.back().x2 = mx;
-        test_data.lines.back().y2 = my;
-
-        const auto line {test_data.lines.back()};
-
-        // move to origin
-        const float vec_x {line.x2-line.x1};
-        const float vec_y {line.y2-line.y1};
-
-        const float len {std::sqrt(vec_x*vec_x+vec_y*vec_y)};
-        const float dir_x {vec_x/len};
-        const float dir_y {vec_y/len};
-
-        const float dir_x_90 {-dir_y};
-        const float dir_y_90 {dir_x};
-
-        const float lower_left_x {line.x1 - info.brush_size*0.5f*dir_x_90};
-        const float lower_left_y {line.y1 - info.brush_size*0.5f*dir_y_90};
-
-        const float upper_left_x {line.x1 + info.brush_size*0.5f*dir_x_90};
-        const float upper_left_y {line.y1 + info.brush_size*0.5f*dir_y_90};
-
-        const float upper_right_x {line.x2 + info.brush_size*0.5f*dir_x_90};
-        const float upper_right_y {line.y2 + info.brush_size*0.5f*dir_y_90};
-
-        const float lower_right_x {line.x2 - info.brush_size*0.5f*dir_x_90};
-        const float lower_right_y {line.y2 - info.brush_size*0.5f*dir_y_90};
-        
-        test_data::quad q {
-            lower_left_x, lower_left_y, 
-            upper_left_x, upper_left_y, 
-            upper_right_x, upper_right_y,
-            lower_right_x, lower_right_y,
-            info.brush_size,
-            len
-        };
-
-        test_data.quads.push_back(std::move(q));
-
-        test_data.should_do = true;
-    }
-    */
-
 }
 
 void application::draw()
 {
-    // TODO: Test clear vs non-clear approach.
     // We want to clear canvas to some background color when we first initialize.
-    if (info.init) {
-        graphics::bind_frame_buffer(canvas.buffer);
-        graphics::set_viewport(0, 0, canvas.width, canvas.height);
-        graphics::clear_buffer_color(canvas.buffer.id, canvas.bg_color);
-        info.init = false;
-    }
+    // We may move this elsewhere ??
+    //if (info.init) {
+    //    graphics::bind_frame_buffer(canvas.buffer);
+    //    graphics::set_viewport(0, 0, canvas.width, canvas.height);
+    //    graphics::clear_buffer_color(canvas.buffer.id, canvas.bg_color);
+    //    info.init = false;
+    //}
 
     if (info.resized) {
         graphics::bind_frame_buffer(temp_canvas.buffer);
@@ -633,7 +598,23 @@ void application::test_draw()
     graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
 
     const auto [mx, my] {input_manager::instance()->get_mouse_gl()};
-    const auto r {10.0f};
+
+    graphics::bind_vertex_array(vao);
+    circle_shader.use_shader();
+
+    circle_shader.set_vec4("u_color", graphics::color{0,0,0,1.0f});
+    for (std::size_t i{}; i<ps.size(); ++i) {
+        math::mat4f m {math::translate(ps[i].x, ps[i].y, 0.0f)*
+                       math::scale(ps[i].r*2, ps[i].r*2, 1.0f)};
+        circle_shader.set_mat4("u_mvp", window_projection*m);
+        circle_shader.set_float("u_radius", ps[i].r);
+        circle_shader.set_float("u_k", uk);
+        circle_shader.set_vec2("u_center_world", ps[i].x, ps[i].y);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+    }
+
+    /*
+    circle_shader.set_vec4("u_color", graphics::color{0.5f,0.2f,0,1});
 
     auto get_point = [](float t) {
         // indices of 2 control points and 2 points on a curve
@@ -663,16 +644,15 @@ void application::test_draw()
     for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=0.05f) {
         samples.emplace_back(get_point(t));
     }
-    /*
-    std::vector<point> samples;
-    for (float t{}; t<=1.0f; t+=0.005f) {
-        for (std::size_t i{}; i+2<ps.size(); i+=2) {
-            auto a {point{lerp(ps[i].x, ps[i+1].x, t), lerp(ps[i].y, ps[i+1].y, t)}};
-            auto b {point{lerp(ps[i+1].x, ps[i+2].x, t), lerp(ps[i+1].y, ps[i+2].y, t)}};
-            samples.emplace_back(point{lerp(a.x, b.x, t), lerp(a.y, b.y, t)});
-        }
-    }
-    */
+
+    //std::vector<point> samples;
+    //for (float t{}; t<=1.0f; t+=0.005f) {
+    //    for (std::size_t i{}; i+2<ps.size(); i+=2) {
+    //        auto a {point{lerp(ps[i].x, ps[i+1].x, t), lerp(ps[i].y, ps[i+1].y, t)}};
+    //        auto b {point{lerp(ps[i+1].x, ps[i+2].x, t), lerp(ps[i+1].y, ps[i+2].y, t)}};
+    //        samples.emplace_back(point{lerp(a.x, b.x, t), lerp(a.y, b.y, t)});
+    //    }
+    //}
 
     graphics::bind_vertex_array(vao);
     circle_shader.use_shader();
@@ -757,81 +737,8 @@ void application::test_draw()
     line_v2_shader.use_shader();
     line_v2_shader.set_mat4("u_mvp", window_projection);
     glDrawElements(GL_TRIANGLES, static_cast<int>(libo.size()), GL_UNSIGNED_INT, nullptr);
-
-    /*
-    graphics::bind_vertex_array(vao);
-    circle_shader.use_shader();
-
-    math::mat4f model {math::translate(mx, my, 0.0f)*
-                       math::scale(r*2, r*2, 1.0f)};
-    circle_shader.set_mat4("u_mvp", window_projection*model);
-    circle_shader.set_float("u_radius", r);
-    circle_shader.set_vec2("u_center_world", mx, my);
-
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-
-    graphics::bind_vertex_array(line_vao);
-    line_shader.use_shader();
-    line_shader.set_vec4("u_line_color", graphics::color{0.54f, 0.52f, 0.2f, 1.0f});
-    line_shader.set_mat4("u_mvp", window_projection);
-
-    line_v2_shader.use_shader();
-    line_v2_shader.set_mat4("u_mvp", window_projection);
-    std::vector<u32> libo;
-    if (test_data.should_do) {
-        std::vector<gl::vertex<gl::pos2, gl::color4>> ls; ls.reserve(test_data.quads.size());
-        for (std::size_t i{}; i<test_data.quads.size(); ++i) {
-            ls.push_back({{test_data.quads[i].x1, test_data.quads[i].y1}, {0.54f, 0.52f, 0.2f, 1.0f}});
-            ls.push_back({{test_data.quads[i].x2, test_data.quads[i].y2}, {0.54f, 0.52f, 0.2f, 1.0f}});
-            ls.push_back({{test_data.quads[i].x3, test_data.quads[i].y3}, {0.54f, 0.52f, 0.2f, 1.0f}});
-            ls.push_back({{test_data.quads[i].x4, test_data.quads[i].y4}, {0.54f, 0.52f, 0.2f, 1.0f}});
-        }
-        line_v2_vbo = gl::named_buffer{};
-        line_ibo = gl::named_buffer{};
-        graphics::buffer_upload_data(line_v2_vbo, ls, GL_STATIC_DRAW);
-        graphics::vao_configure<gl::pos2, gl::color4>(line_v2_vao, line_v2_vbo, 0);
-        for (std::size_t i{}, k{}; i<test_data.quads.size(); ++i, k+=4) {
-            libo.emplace_back(k);
-            libo.emplace_back(k+1);
-            libo.emplace_back(k+2);
-
-            libo.emplace_back(k);
-            libo.emplace_back(k+2);
-            libo.emplace_back(k+3);
-        }
-        graphics::buffer_upload_data(line_ibo, libo, GL_STATIC_DRAW);
-        graphics::vao_connect_ibo(line_v2_vao, line_ibo);
-
-       // std::vector<gl::vertex<gl::pos2>> ls; ls.reserve(test_data.lines.size());
-       // for (std::size_t i{}; i<test_data.lines.size(); ++i) {
-       //     ls.push_back({{test_data.lines[i].x1, test_data.lines[i].y1}});
-       //     ls.push_back({{test_data.lines[i].x2, test_data.lines[i].y2}});
-       // }
-       // line_vbo = gl::named_buffer{};
-       // graphics::buffer_upload_data(line_vbo, ls, GL_STATIC_DRAW);
-       // graphics::vao_configure<gl::pos2>(line_vao, line_vbo, 0);
-       // std::println("{}", ls.size());
-        test_data.should_do = false;
-    }
-    graphics::bind_vertex_array(line_v2_vao);
-    glDrawElements(GL_TRIANGLES, static_cast<int>(test_data.quads.size()*6), GL_UNSIGNED_INT, nullptr);
-
-    glLineWidth(11.0f);
-    glDrawArrays(GL_LINES, 0, static_cast<int>(test_data.lines.size()*2));
-
-    std::array<gl::vertex<gl::pos2>, 2> yle {{
-        {{canvas.width*0.5f, canvas.height*0.5f}},
-        {{mx, my}}
-    }};
-    line_v2_vbo = gl::named_buffer{};
-    graphics::buffer_upload_data(line_v2_vbo, yle, GL_STATIC_DRAW);
-    graphics::vao_configure<gl::pos2>(line_v2_vao, line_v2_vbo, 0);
-
-    graphics::bind_vertex_array(line_v2_vao);
-    glLineWidth(7.0f);
-    glDrawArrays(GL_LINES, 0, 2);
     */
-}
 
+}
 
 }
