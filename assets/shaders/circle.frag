@@ -14,9 +14,9 @@ void main()
     vec2 p = gl_FragCoord.xy;
     p -= u_center_world;
     //float s = 1.0f - step(u_radius, length(p));
-    //float s = 1.0f - smoothstep(u_radius-1.5f, u_radius, length(p));
+    float s = 1.0f - smoothstep(u_radius-6.5f, u_radius, length(p));
     float plen = length(p) / u_radius;
-    float s = max(0, 1.0f - step(1.0f, plen));
+    //float s = max(0, 1.0f - step(1.0f, plen));
     final_color = u_color*vec4(s);
     //p -= u_center_world; // translate to origin
    

@@ -11,9 +11,10 @@
 #include "input_manager.hpp"
 #include "graphics/graphics.hpp"
 
+// #TODO FIX A BUG - when mouse goes out of canvas and goes back in it does weird stuff
 namespace {
 
-constexpr bool TESTING {false};
+constexpr bool TESTING {true};
 constexpr bool kek {true};
 constexpr int MAX_FPS {500};
 struct point {
@@ -92,7 +93,7 @@ application::application(application_settings&& settings)
      circle_shader{"./assets/shaders/circle.vert", "./assets/shaders/circle.frag"},
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      canvas{gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)},
-            gl::sampler{graphics::create_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
+            gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
             400, 300, {}, {}, {}, graphics::WHITE},
      temp_canvas{{gl::texture2d{graphics::create_texture2d(400, 300, GL_RGBA8)}}, {}, 400, 300},
      line_shader{"./assets/shaders/line.vert", "./assets/shaders/line.frag"},
