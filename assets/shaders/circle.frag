@@ -14,7 +14,7 @@ void main()
 {
     vec2 p = gl_FragCoord.xy;
     p -= u_center_world;
-    float s = 1.0f - smoothstep(u_radius-u_k, u_radius, length(p));
+    float s = 1.0f - smoothstep(u_radius-1.0f, u_radius, length(p));
     final_color = u_color*vec4(s);
 }
 

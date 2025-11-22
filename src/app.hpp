@@ -3,6 +3,7 @@
 #include <SDL3/SDL_video.h>
 
 #include <vector>
+#include <array>
 
 #include "graphics/gl_entities.hpp"
 #include "graphics/shader.hpp"
@@ -14,6 +15,20 @@ struct application_settings {
     int window_width  {800};
     int window_height {600};
     bool resizable {false};
+};
+
+struct brush_point {
+    float x {};
+    float y {};
+    float r {};
+};
+
+// #TODO: change this later 
+struct line {
+    float x1 {}, y1 {};
+    float x2 {}, y2 {};
+    float thickness_1 {};
+    float thickness_2 {};
 };
 
 namespace sdl {
@@ -60,14 +75,20 @@ private:
     void test_draw();
 
     // gl entities.
+    gl::vertex_array circle_vao;
+    gl::vertex_array canvas_vao;
+    gl::vertex_array line_vao;
+
+    gl::named_buffer circle_vbo;
+    gl::named_buffer canvas_vbo;
+    gl::named_buffer line_vbo;
+
+    gl::named_buffer quad_ibo;
+    gl::named_buffer line_ibo;
+
     gl::shader circle_shader;
     gl::shader textured_quad_shader;
-    gl::vertex_array vao;
-    gl::named_buffer vbo;
-    gl::named_buffer ibo;
-
-    gl::vertex_array canvas_vao;
-    gl::named_buffer canvas_vbo;
+    gl::shader line_shader;
 
     math::mat4f window_projection;
 
@@ -100,53 +121,16 @@ private:
         float brush_size {10.0f};
         bool should_draw {false};
         bool should_empty {false};
-        bool init {true};
         bool resized {true};
     } info;
 
-    std::vector<float> cpx;
-    std::vector<float> cpy;
-    std::vector<float> cpr;
+    std::vector<brush_point> brush_points; // for brush stroke
 
-    struct line {
-        float x1 {}, y1 {};
-        float x2 {}, y2 {};
-        float thickness_1 {};
-        float thickness_2 {};
-    };
-    std::vector<line> lines;
+    static constexpr int MAX_PER_BATCH {4096}; // count
 
-    /*
-    struct test_data {
-        struct line {
-            float x1 {}, y1 {};
-            float x2 {}, y2 {};
-        };
-
-        struct quad {
-            float x1 {}, y1 {};
-            float x2 {}, y2 {};
-            float x3 {}, y3 {};
-            float x4 {}, y4 {};
-            float thickness {5.0f};
-            float len {};
-        };
-
-        bool should_do {false};
-        std::vector<line> lines;
-        std::vector<quad> quads; // treat as quad
-        line ll {};
-    } test_data;
-    */
-
-    gl::vertex_array line_vao;
-    gl::named_buffer line_vbo;
-    gl::named_buffer line_ibo;
-    gl::shader line_shader;
-
-    gl::vertex_array line_v2_vao;
-    gl::named_buffer line_v2_vbo;
-    gl::shader line_v2_shader;
+    struct line_batcher {
+        std::vector<gl::vertex<gl::pos2, gl::color4>> lines_data;
+    } line_batcher;
 };
 
 }

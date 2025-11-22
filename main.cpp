@@ -7,7 +7,7 @@
 
 int main([[maybe_unused]]int argc, [[maybe_unused]]char** argv)
 {
-    peria::application app {peria::application_settings{"peria_paint", 800, 600, true}};
+    peria::application app {peria::application_settings{"peria_paint", 1600, 900, true}};
     if (app.initialized()) {
         app.run();
     }
