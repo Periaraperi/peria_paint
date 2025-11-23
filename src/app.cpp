@@ -171,9 +171,11 @@ application::application(application_settings&& settings)
                 line_indices[static_cast<std::size_t>(i+4)] = static_cast<u32>(k+2);
                 line_indices[static_cast<std::size_t>(i+5)] = static_cast<u32>(k+3);
             }
+
+            graphics::buffer_allocate_data(line_vbo, MAX_PER_BATCH*4*gl::vertex<gl::pos2, gl::color4>::stride, GL_DYNAMIC_DRAW);
             graphics::buffer_upload_data(line_ibo, line_indices, GL_STATIC_DRAW);
             graphics::vao_configure<gl::pos2, gl::color4>(line_vao, line_vbo, 0);
-            graphics::vao_connect_ibo(canvas_vao, line_ibo);
+            graphics::vao_connect_ibo(line_vao, line_ibo);
         }
 
         // CANVAS FRAME BUFFER AND COLOR ATTACHMENTS
@@ -422,7 +424,6 @@ void application::draw()
         circle_shader.use_shader();
 
         circle_shader.set_vec4("u_color", graphics::color{0,0,0,1});
-        //std::println("{}", brush_points.size());
 
         // Draw brush stroke points
         for (std::size_t i{}; i<brush_points.size(); ++i) {
@@ -436,7 +437,7 @@ void application::draw()
         }
 
         std::vector<brush_point> samples;
-        for (float t{}; t<static_cast<float>(brush_points.size())-3.0f; t+=0.1f) {
+        for (float t{}; t<static_cast<float>(brush_points.size())-3.0f; t+=0.2f) {
             samples.emplace_back(get_point_on_path(brush_points, t));
         }
 
@@ -530,35 +531,20 @@ void application::draw()
         line_shader.use_shader();
         line_shader.set_mat4("u_mvp", canvas.projection);
 
-        // TODO: FIX ME 
         int line_count {static_cast<int>((line_batcher.lines_data.size()/4))};
-        std::size_t offset {};
-        std::println("{} {}", line_count, line_batcher.lines_data.size());
-        while (line_count > 0) {
-            int c {}; // count for each batch
-            if (line_count >= MAX_PER_BATCH) {
-                c = MAX_PER_BATCH;
-            }
-            else { // smaller remaining part
-                c = line_count;
-            }
-            std::println("ccc {}", c);
-
-            glNamedBufferSubData(line_vbo.id, 0, static_cast<u32>(4*c)*line_batcher.lines_data[0].stride, line_batcher.lines_data.data()+offset);
-            glDrawElements(GL_TRIANGLES, c*6, GL_UNSIGNED_INT, nullptr);
-            offset += static_cast<u32>(4*c);
-            line_count -= c;
+        int iterations {line_count / MAX_PER_BATCH};
+        int leftover   {line_count - (MAX_PER_BATCH*iterations)};
+        std::println("{}", line_count);
+        for (int i{}; i<iterations; ++i) {
+            graphics::buffer_upload_subdata(line_vbo, 0, 4*MAX_PER_BATCH*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+i*MAX_PER_BATCH*4);
+            glDrawElements(GL_TRIANGLES, MAX_PER_BATCH*6, GL_UNSIGNED_INT, nullptr);
         }
-        //int iterations {line_count / MAX_PER_BATCH};
-        //int leftover   {line_count - (MAX_PER_BATCH*iterations)};
-
-        //for (int i{}; i<iterations; ++i) {
-        //}
-        //if (leftover > 0) {
-        //    glNamedBufferSubData(line_vbo.id, 0, static_cast<u32>(4*leftover)*lb[0].stride, lb.data()+iterations*MAX_PER_BATCH*4);
-        //    glDrawElements(GL_TRIANGLES, leftover*6, GL_UNSIGNED_INT, nullptr);
-        //}
+        if (leftover > 0) {
+            graphics::buffer_upload_subdata(line_vbo, 0, 4*static_cast<u32>(leftover)*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+iterations*MAX_PER_BATCH*4);
+            glDrawElements(GL_TRIANGLES, leftover*6, GL_UNSIGNED_INT, nullptr);
+        }
         line_batcher.lines_data.clear();
+        if (brush_points.size() > 1024) brush_points.clear(); // INVESTIGATE THIS!!!!
 
         if (info.should_empty) {
             brush_points.clear();

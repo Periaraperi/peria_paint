@@ -130,6 +130,7 @@ private:
 
     struct line_batcher {
         std::vector<gl::vertex<gl::pos2, gl::color4>> lines_data;
+        using vertex_t = typename gl::vertex<gl::pos2, gl::color4>;
     } line_batcher;
 };
 
