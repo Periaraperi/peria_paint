@@ -19,6 +19,25 @@ float uk {0.0f};
 float RADIUS {10.0f};
 std::vector<peria::brush_point> ps;
 
+float zoom_scale {1.0f};
+
+[[nodiscard]]
+float world_to_screen_x(float x, float wox) noexcept
+{ return (x + wox)*zoom_scale; }
+
+[[nodiscard]]
+float world_to_screen_y(float y, float woy) noexcept
+{ return (y + woy)*zoom_scale; }
+
+[[nodiscard]]
+float screen_to_world_x(float x, float wox) noexcept
+{ return ((x / zoom_scale) - wox); }
+
+[[nodiscard]]
+float screen_to_world_y(float y, float woy) noexcept
+{ return ((y / zoom_scale) - woy); }
+
+
 [[nodiscard]]
 float lerp(float a, float b, float t) noexcept
 { return a*(1.0f - t) + b*t; }
@@ -262,6 +281,26 @@ void application::run()
                 peria::graphics::set_relative_motion(ev.motion.xrel, -ev.motion.yrel);
                 info.mouse_moved = true;
             }
+            else if (ev.type == SDL_EVENT_MOUSE_WHEEL) {
+                const auto [mx, my] {input_manager_->get_mouse_gl()};
+                float mouse_world_x {screen_to_world_x(mx, info.world_offset_x)};
+                float mouse_world_y {screen_to_world_y(my, info.world_offset_y)};
+
+                if (ev.wheel.y > 0.0f) {
+                    zoom_scale *= 2.0f;
+                    zoom_scale = std::min(zoom_scale, 512.0f);
+                }
+                if (ev.wheel.y < 0.0f) {
+                    zoom_scale *= 0.5f;
+                    zoom_scale = std::max(zoom_scale, 0.01f);
+                }
+                float mouse_world_after_zoom_x {screen_to_world_x(mx, info.world_offset_x)};
+                float mouse_world_after_zoom_y {screen_to_world_y(my, info.world_offset_y)};
+
+                info.world_offset_x += (mouse_world_after_zoom_x - mouse_world_x);
+                info.world_offset_y += (mouse_world_after_zoom_y - mouse_world_y);
+
+            }
         }
 
         update(dt);
@@ -285,10 +324,18 @@ void application::run()
         input_manager_->update_prev_state();
     }
 }
+
+static float zm {1.0f};
+
 void application::update(float dt)
 {
     const auto im {input_manager::instance()};
     const auto [mx, my] {im->get_mouse_gl()};
+    std::println("Mouse in screenspace {} {}", mx, my);
+    std::println("Mouse in worldspace {} {}", mx-info.world_offset_x, my-info.world_offset_y);
+    std::println("Offset {} {}", info.world_offset_x, info.world_offset_y);
+    std::println("canvas pos {} {}", canvas.pos_x, canvas.pos_y);
+    std::println("canvas pos {} {}", canvas.pos_x+info.world_offset_x, canvas.pos_y+info.world_offset_y);
     info.should_draw = false;
 
     if (TESTING) {
@@ -326,6 +373,15 @@ void application::update(float dt)
         graphics::set_vsync(!graphics::is_vsync());
     }
 
+    if (im->key_pressed(SDL_SCANCODE_M)) {
+        zm *= 2.0f;
+        zm = std::min(512.0f, zm);
+    }
+    if (im->key_pressed(SDL_SCANCODE_N)) {
+        zm *= 0.5f;
+        zm = std::max(0.05f, zm);
+    }
+
     // make canvas bigger
     // TODO: revisit this later. We will recreate texture many many times as long as we are dragging.
     //       maybe better option would be to drag and only resize onRelease. 
@@ -359,32 +415,40 @@ void application::update(float dt)
     // panning around
     if (info.mouse_moved && im->mouse_down(mouse_button::MID)) {
         const auto rel_motion {graphics::get_relative_motion()};
-        info.world_offset_x += rel_motion.x;
-        info.world_offset_y += rel_motion.y;
+        info.world_offset_x += (rel_motion.x/zoom_scale);
+        info.world_offset_y += (rel_motion.y/zoom_scale);
         return; // we don't want to draw while panning around
     }
 
     {
-        const auto canvas_world_center_x {canvas.pos_x+info.world_offset_x};
-        const auto canvas_world_center_y {canvas.pos_y+info.world_offset_y};
+        const auto canvas_world_center_x {canvas.pos_x};
+        const auto canvas_world_center_y {canvas.pos_y};
         const auto canvas_lower_left_x   {canvas_world_center_x-canvas.width*0.5f};
         const auto canvas_lower_left_y   {canvas_world_center_y-canvas.height*0.5f};
         const auto canvas_upper_right_x  {canvas_world_center_x+canvas.width*0.5f};
         const auto canvas_upper_right_y  {canvas_world_center_y+canvas.height*0.5f};
+        std::println("canvas lower {} {}", canvas_lower_left_x, canvas_lower_left_y);
 
-        bool inside_canvas {mx >= canvas_lower_left_x &&
-                            mx <= canvas_upper_right_x &&
-                            my >= canvas_lower_left_y &&
-                            my <= canvas_upper_right_y};
+        const auto world_mx {screen_to_world_x(mx, info.world_offset_x)};
+        const auto world_my {screen_to_world_y(my, info.world_offset_y)};
+        bool inside_canvas {world_mx >= canvas_lower_left_x &&
+                            world_mx <= canvas_upper_right_x &&
+                            world_my >= canvas_lower_left_y &&
+                            world_my <= canvas_upper_right_y};
+        if (inside_canvas) {
+            std::println("inside inside inside");
+        }
 
         if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
-            brush_points.emplace_back(brush_point{mx-canvas_lower_left_x, my-canvas_lower_left_y, info.brush_size*0.5f});
+            //brush_points.emplace_back(brush_point{mx-canvas_lower_left_x, my-canvas_lower_left_y, info.brush_size*0.5f});
+            brush_points.emplace_back(brush_point{world_mx-canvas_lower_left_x, world_my-canvas_lower_left_y, info.brush_size*0.5f});
             info.should_draw = true;
             info.should_empty = false;
         }
 
         if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
-            brush_points.emplace_back(brush_point{mx-canvas_lower_left_x, my-canvas_lower_left_y, info.brush_size*0.5f});
+            //brush_points.emplace_back(brush_point{mx-canvas_lower_left_x, my-canvas_lower_left_y, info.brush_size*0.5f});
+            brush_points.emplace_back(brush_point{world_mx-canvas_lower_left_x, world_my-canvas_lower_left_y, info.brush_size*0.5f});
             info.should_draw = true;
             info.should_empty = true;
         }
@@ -560,8 +624,14 @@ void application::draw()
         const auto cw {static_cast<float>(canvas.width)};
         const auto ch {static_cast<float>(canvas.height)};
 
-        math::mat4f model {math::translate(canvas.pos_x+info.world_offset_x, canvas.pos_y+info.world_offset_y, 0.0f)*
-                           math::scale(cw, ch, 1.0f)};
+        //math::mat4f model {math::translate(canvas.pos_x+info.world_offset_x, canvas.pos_y+info.world_offset_y, 0.0f)*
+        //                   math::scale(zoom_scale*cw, zoom_scale*ch, 1.0f)};
+
+        // I guess more appropriate name would be world to view??
+        // In 2D panning and zooming is kinda different compared to 3D.
+        // camera zooming and panning is incorporated in this model matrix.
+        math::mat4f model {math::translate(world_to_screen_x(canvas.pos_x, info.world_offset_x), world_to_screen_y(canvas.pos_y, info.world_offset_y), 0.0f)*
+                           math::scale(zoom_scale*cw, zoom_scale*ch, 1.0f)};
 
         graphics::bind_vertex_array(canvas_vao);
         textured_quad_shader.use_shader();
