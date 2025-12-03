@@ -439,18 +439,27 @@ void application::update(float dt)
             std::println("inside inside inside");
         }
 
-        if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
-            //brush_points.emplace_back(brush_point{mx-canvas_lower_left_x, my-canvas_lower_left_y, info.brush_size*0.5f});
-            brush_points.emplace_back(brush_point{world_mx-canvas_lower_left_x, world_my-canvas_lower_left_y, info.brush_size*0.5f});
-            info.should_draw = true;
-            info.should_empty = false;
-        }
-
-        if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
-            //brush_points.emplace_back(brush_point{mx-canvas_lower_left_x, my-canvas_lower_left_y, info.brush_size*0.5f});
+        if (im->mouse_released(mouse_button::LEFT) && inside_canvas && !info.mouse_moved) {
             brush_points.emplace_back(brush_point{world_mx-canvas_lower_left_x, world_my-canvas_lower_left_y, info.brush_size*0.5f});
             info.should_draw = true;
             info.should_empty = true;
+            return;
+        }
+
+        if (info.mouse_moved) {
+            if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
+                //brush_points.emplace_back(brush_point{mx-canvas_lower_left_x, my-canvas_lower_left_y, info.brush_size*0.5f});
+                brush_points.emplace_back(brush_point{world_mx-canvas_lower_left_x, world_my-canvas_lower_left_y, info.brush_size*0.5f});
+                info.should_draw = true;
+                info.should_empty = false;
+            }
+
+            if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
+                //brush_points.emplace_back(brush_point{mx-canvas_lower_left_x, my-canvas_lower_left_y, info.brush_size*0.5f});
+                brush_points.emplace_back(brush_point{world_mx-canvas_lower_left_x, world_my-canvas_lower_left_y, info.brush_size*0.5f});
+                info.should_draw = true;
+                info.should_empty = true;
+            }
         }
     }
 }
