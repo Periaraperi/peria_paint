@@ -116,6 +116,7 @@ private:
         float world_offset_x {};
         float world_offset_y {};
         bool mouse_moved {};
+        bool prev_mouse_moved {};
         float pan_speed {50.0f};
         float resize_speed {100.0f};
         float brush_size {10.0f};

@@ -313,6 +313,7 @@ void application::run()
         }
 
         SDL_GL_SwapWindow(sdl_initializer_.window);
+        info.prev_mouse_moved = info.mouse_moved;
         info.mouse_moved = false;
         
         std::string title {"peria_paint | "+std::to_string(elapsed_time)+" "+std::to_string(dt)};
@@ -331,11 +332,11 @@ void application::update(float dt)
 {
     const auto im {input_manager::instance()};
     const auto [mx, my] {im->get_mouse_gl()};
-    std::println("Mouse in screenspace {} {}", mx, my);
-    std::println("Mouse in worldspace {} {}", mx-info.world_offset_x, my-info.world_offset_y);
-    std::println("Offset {} {}", info.world_offset_x, info.world_offset_y);
-    std::println("canvas pos {} {}", canvas.pos_x, canvas.pos_y);
-    std::println("canvas pos {} {}", canvas.pos_x+info.world_offset_x, canvas.pos_y+info.world_offset_y);
+    //std::println("Mouse in screenspace {} {}", mx, my);
+    //std::println("Mouse in worldspace {} {}", mx-info.world_offset_x, my-info.world_offset_y);
+    //std::println("Offset {} {}", info.world_offset_x, info.world_offset_y);
+    //std::println("canvas pos {} {}", canvas.pos_x, canvas.pos_y);
+    //std::println("canvas pos {} {}", canvas.pos_x+info.world_offset_x, canvas.pos_y+info.world_offset_y);
     info.should_draw = false;
 
     if (TESTING) {
@@ -373,15 +374,6 @@ void application::update(float dt)
         graphics::set_vsync(!graphics::is_vsync());
     }
 
-    if (im->key_pressed(SDL_SCANCODE_M)) {
-        zm *= 2.0f;
-        zm = std::min(512.0f, zm);
-    }
-    if (im->key_pressed(SDL_SCANCODE_N)) {
-        zm *= 0.5f;
-        zm = std::max(0.05f, zm);
-    }
-
     // make canvas bigger
     // TODO: revisit this later. We will recreate texture many many times as long as we are dragging.
     //       maybe better option would be to drag and only resize onRelease. 
@@ -393,7 +385,7 @@ void application::update(float dt)
         const auto rel_motion {graphics::get_relative_motion()};
         const auto dx {rel_motion.x};
         const auto dy {rel_motion.y};
-        std::println("dx {} dy {}", dx, dy);
+        //std::println("dx {} dy {}", dx, dy);
 
         const auto new_width {canvas.width + static_cast<int>(dx)};
         const auto new_height {canvas.height + static_cast<int>(dy)};
@@ -427,7 +419,7 @@ void application::update(float dt)
         const auto canvas_lower_left_y   {canvas_world_center_y-canvas.height*0.5f};
         const auto canvas_upper_right_x  {canvas_world_center_x+canvas.width*0.5f};
         const auto canvas_upper_right_y  {canvas_world_center_y+canvas.height*0.5f};
-        std::println("canvas lower {} {}", canvas_lower_left_x, canvas_lower_left_y);
+        //std::println("canvas lower {} {}", canvas_lower_left_x, canvas_lower_left_y);
 
         const auto world_mx {screen_to_world_x(mx, info.world_offset_x)};
         const auto world_my {screen_to_world_y(my, info.world_offset_y)};
@@ -436,7 +428,7 @@ void application::update(float dt)
                             world_my >= canvas_lower_left_y &&
                             world_my <= canvas_upper_right_y};
         if (inside_canvas) {
-            std::println("inside inside inside");
+           // std::println("inside inside inside");
         }
 
         if (im->mouse_released(mouse_button::LEFT) && inside_canvas && !info.mouse_moved) {
@@ -446,16 +438,33 @@ void application::update(float dt)
             return;
         }
 
+        if ((info.prev_mouse_moved || info.mouse_moved) && !inside_canvas) {
+            if (brush_points.size() >= 2) {
+                const auto idx {brush_points.size() - 1};
+                auto dir_x {brush_points[idx].x - brush_points[idx-1].x};
+                auto dir_y {brush_points[idx].y - brush_points[idx-1].y};
+                const auto len {std::sqrtf(dir_x*dir_x + dir_y*dir_y)};
+                dir_x /= len;
+                dir_y /= len;
+                const auto m {std::max(canvas.width, canvas.height)};
+                brush_points.emplace_back(brush_point{brush_points[idx].x+dir_x*m, brush_points[idx].y+dir_y*m, info.brush_size*0.5f});
+                //static int xxxx {};
+                std::println("{} {}", brush_points.back().x, brush_points.back().y); 
+            }
+
+            info.should_draw = true;
+            info.should_empty = true;
+            return;
+        }
+
         if (info.mouse_moved) {
             if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
-                //brush_points.emplace_back(brush_point{mx-canvas_lower_left_x, my-canvas_lower_left_y, info.brush_size*0.5f});
                 brush_points.emplace_back(brush_point{world_mx-canvas_lower_left_x, world_my-canvas_lower_left_y, info.brush_size*0.5f});
                 info.should_draw = true;
                 info.should_empty = false;
             }
 
             if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
-                //brush_points.emplace_back(brush_point{mx-canvas_lower_left_x, my-canvas_lower_left_y, info.brush_size*0.5f});
                 brush_points.emplace_back(brush_point{world_mx-canvas_lower_left_x, world_my-canvas_lower_left_y, info.brush_size*0.5f});
                 info.should_draw = true;
                 info.should_empty = true;
@@ -607,7 +616,7 @@ void application::draw()
         int line_count {static_cast<int>((line_batcher.lines_data.size()/4))};
         int iterations {line_count / MAX_PER_BATCH};
         int leftover   {line_count - (MAX_PER_BATCH*iterations)};
-        std::println("{}", line_count);
+        //std::println("{}", line_count);
         for (int i{}; i<iterations; ++i) {
             graphics::buffer_upload_subdata(line_vbo, 0, 4*MAX_PER_BATCH*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+i*MAX_PER_BATCH*4);
             glDrawElements(GL_TRIANGLES, MAX_PER_BATCH*6, GL_UNSIGNED_INT, nullptr);
@@ -673,133 +682,6 @@ void application::test_draw()
         circle_shader.set_vec2("u_center_world", ps[i].x, ps[i].y);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     }
-
-    /*
-    circle_shader.set_vec4("u_color", graphics::color{0.5f,0.2f,0,1});
-
-    auto get_point = [](float t) {
-        // indices of 2 control points and 2 points on a curve
-        std::size_t p1 {static_cast<std::size_t>(t)+1};
-        std::size_t p2 {p1+1};
-        std::size_t p3 {p2+1};
-        std::size_t p0 {p1-1};
-
-        t = t - (float)static_cast<int>(t);
-
-        float tt {t*t};
-        float ttt {tt*t};
-
-        // contributions based on some predefined cubic functions
-        float c1 {-ttt + 2.0f*tt - t};
-        float c2 {3.0f*ttt - 5.0f*tt + 2.0f};
-        float c3 {-3.0f*ttt + 4.0f*tt + t};
-        float c4 {ttt-tt};
-
-        return point {
-            0.5f * (c1*ps[p0].x + c2*ps[p1].x + c3*ps[p2].x + c4*ps[p3].x),
-            0.5f * (c1*ps[p0].y + c2*ps[p1].y + c3*ps[p2].y + c4*ps[p3].y),
-        };
-    };
-
-    std::vector<point> samples;
-    for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=0.05f) {
-        samples.emplace_back(get_point(t));
-    }
-
-    //std::vector<point> samples;
-    //for (float t{}; t<=1.0f; t+=0.005f) {
-    //    for (std::size_t i{}; i+2<ps.size(); i+=2) {
-    //        auto a {point{lerp(ps[i].x, ps[i+1].x, t), lerp(ps[i].y, ps[i+1].y, t)}};
-    //        auto b {point{lerp(ps[i+1].x, ps[i+2].x, t), lerp(ps[i+1].y, ps[i+2].y, t)}};
-    //        samples.emplace_back(point{lerp(a.x, b.x, t), lerp(a.y, b.y, t)});
-    //    }
-    //}
-
-    graphics::bind_vertex_array(vao);
-    circle_shader.use_shader();
-
-    circle_shader.set_vec4("u_color", graphics::color{0,0,0,1});
-    for (std::size_t i{}; i<ps.size(); ++i) {
-        math::mat4f m {math::translate(ps[i].x, ps[i].y, 0.0f)*
-                       math::scale(r*2, r*2, 1.0f)};
-        circle_shader.set_mat4("u_mvp", window_projection*m);
-        circle_shader.set_float("u_radius", r);
-        circle_shader.set_vec2("u_center_world", ps[i].x, ps[i].y);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-    }
-
-    circle_shader.set_vec4("u_color", graphics::color{0.5f,0.2f,0,1});
-    float r2 {5.0f};
-    for (std::size_t i{}; i<samples.size(); ++i) {
-        math::mat4f m {math::translate(samples[i].x, samples[i].y, 0.0f)*
-                       math::scale(r2*2, r2*2, 1.0f)};
-        circle_shader.set_mat4("u_mvp", window_projection*m);
-        circle_shader.set_float("u_radius", r2);
-        circle_shader.set_vec2("u_center_world", samples[i].x, samples[i].y);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-    }
-
-    std::vector<gl::vertex<gl::pos2, gl::color4>> ls; 
-    ls.reserve(ps.size());
-
-    for (std::size_t i{1}; i<samples.size(); ++i) {
-        const auto& x1 {samples[i-1].x};
-        const auto& y1 {samples[i-1].y};
-        const auto& t1 {r2};
-        const auto& x2 {samples[i].x};
-        const auto& y2 {samples[i].y};
-        const auto& t2 {r2};
-
-        const float vec_x {x2-x1};
-        const float vec_y {y2-y1};
-        const float len {std::sqrt(vec_x*vec_x+vec_y*vec_y)};
-        const float dir_x {vec_x/len};
-        const float dir_y {vec_y/len};
-        const float dir_x_90 {-dir_y};
-        const float dir_y_90 {dir_x};
-
-        const float lower_left_x {x1 - t1*dir_x_90};
-        const float lower_left_y {y1 - t1*dir_y_90};
-
-        const float upper_left_x {x1 + t1*dir_x_90};
-        const float upper_left_y {y1 + t1*dir_y_90};
-
-        const float upper_right_x {x2 + t2*dir_x_90};
-        const float upper_right_y {y2 + t2*dir_y_90};
-
-        const float lower_right_x {x2 - t2*dir_x_90};
-        const float lower_right_y {y2 - t2*dir_y_90};
-
-        ls.push_back({{lower_left_x,  lower_left_y }, {0.5f,0.2f,0,1}});
-        ls.push_back({{upper_left_x,  upper_left_y }, {0.5f,0.2f,0,1}});
-        ls.push_back({{upper_right_x, upper_right_y}, {0.5f,0.2f,0,1}});
-        ls.push_back({{lower_right_x, lower_right_y}, {0.5f,0.2f,0,1}});
-    }
-
-    line_v2_vbo = gl::named_buffer{};
-    line_ibo = gl::named_buffer{};
-    graphics::buffer_upload_data(line_v2_vbo, ls, GL_STATIC_DRAW);
-    graphics::vao_configure<gl::pos2, gl::color4>(line_v2_vao, line_v2_vbo, 0);
-    std::vector<u32> libo;
-    for (std::size_t i{}, k{}; i<ls.size()/4; ++i, k+=4) {
-        libo.emplace_back(k);
-        libo.emplace_back(k+1);
-        libo.emplace_back(k+2);
-
-        libo.emplace_back(k);
-        libo.emplace_back(k+2);
-        libo.emplace_back(k+3);
-    }
-
-    graphics::buffer_upload_data(line_ibo, libo, GL_STATIC_DRAW);
-    graphics::vao_connect_ibo(line_v2_vao, line_ibo);
-
-    graphics::bind_vertex_array(line_v2_vao);
-    line_v2_shader.use_shader();
-    line_v2_shader.set_mat4("u_mvp", window_projection);
-    glDrawElements(GL_TRIANGLES, static_cast<int>(libo.size()), GL_UNSIGNED_INT, nullptr);
-    */
-
 }
 
 }
