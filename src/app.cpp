@@ -18,6 +18,7 @@ constexpr int MAX_FPS {500};
 float uk {0.0f};
 float RADIUS {10.0f};
 std::vector<peria::brush_point> ps;
+std::vector<peria::gl::texture2d> temp_vec; 
 
 float zoom_scale {1.0f};
 
@@ -146,7 +147,7 @@ application::application(application_settings&& settings)
     std::println("application construction");
 
     input_manager::initialize();
-
+    temp_vec.reserve(100);
     {
         peria::graphics::set_vsync(true);
         peria::graphics::set_relative_mouse(sdl_initializer_.window, false);
@@ -302,13 +303,13 @@ void application::run()
 
             }
         }
-
-        update(dt);
         
         if (TESTING) {
+            test_update(dt);
             test_draw();
         }
         else {
+            update(dt);
             draw();
         }
 
@@ -339,28 +340,6 @@ void application::update(float dt)
     //std::println("canvas pos {} {}", canvas.pos_x+info.world_offset_x, canvas.pos_y+info.world_offset_y);
     info.should_draw = false;
 
-    if (TESTING) {
-        if (im->mouse_pressed(mouse_button::LEFT)) {
-            ps.emplace_back(brush_point{mx, my, RADIUS});
-        }
-        if (im->key_down(SDL_SCANCODE_W)) {
-            RADIUS += 100.0f*dt;
-            RADIUS = std::min(RADIUS, 250.0f);
-        }
-        if (im->key_down(SDL_SCANCODE_E)) {
-            RADIUS -= 100.0f*dt;
-            RADIUS = std::max(RADIUS, 2.0f);
-        }
-        if (im->key_down(SDL_SCANCODE_LSHIFT) && im->key_down(SDL_SCANCODE_Q)) {
-            uk -= 100.0f*dt;
-            uk = std::max(0.0f, uk);
-        }
-        else if (im->key_down(SDL_SCANCODE_Q)) {
-            uk += 100.0f*dt;
-        }
-        return;
-    }
-
     if (im->key_down(SDL_SCANCODE_W)) {
         info.brush_size += 10.0f*dt;
         info.brush_size = std::min(info.brush_size, 150.0f);
@@ -378,21 +357,49 @@ void application::update(float dt)
     // TODO: revisit this later. We will recreate texture many many times as long as we are dragging.
     //       maybe better option would be to drag and only resize onRelease. 
     //       We can draw outline for "new" bounds
-    if (info.mouse_moved && 
-        im->mouse_down(mouse_button::MID) &&
-        im->key_down(SDL_SCANCODE_LSHIFT)) {
+    if (im->key_pressed(SDL_SCANCODE_O)) {
+    //if (info.mouse_moved &&
+    //    im->mouse_down(mouse_button::MID) &&
+    //    im->key_down(SDL_SCANCODE_LSHIFT)) {
 
         const auto rel_motion {graphics::get_relative_motion()};
-        const auto dx {rel_motion.x};
-        const auto dy {rel_motion.y};
+        //const auto dx {rel_motion.x};
+        //const auto dy {rel_motion.y};
         //std::println("dx {} dy {}", dx, dy);
+        const auto dx {1000};
+        const auto dy {1000};
 
         const auto new_width {canvas.width + static_cast<int>(dx)};
         const auto new_height {canvas.height + static_cast<int>(dy)};
 
-        gl::texture2d texture = graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA8);
+        // creating texture with OLD w/h
+        //gl::texture2d texture = graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA8);
+
+        // creating new texture with UPDATED w/h and storing it in temp_canvas.
+        // whatever was inside it gets DESTROYED because move assignment is performed because RHS is prvalue.
+        temp_canvas.texture = graphics::create_texture2d(new_width, new_height, GL_RGBA8);
+
+        // here I am linking temp_frame_buffer to UPDATED texture.
+        glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+        const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+        }
+        // updating temp canvas dimensions
+        temp_canvas.width = new_width;
+        temp_canvas.height = new_height;
+        info.resized = true;
+        return; // here above 'texture' will be destroyed. Why the fuck am I creating it then????
+    }
+    if (im->key_pressed(SDL_SCANCODE_P)) {
+        const auto dx {-1000};
+        const auto dy {-1000};
+
+        const auto new_width {canvas.width + static_cast<int>(dx)};
+        const auto new_height {canvas.height + static_cast<int>(dy)};
 
         temp_canvas.texture = graphics::create_texture2d(new_width, new_height, GL_RGBA8);
+
         glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
         const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
         if (status != GL_FRAMEBUFFER_COMPLETE) {
@@ -473,11 +480,86 @@ void application::update(float dt)
     }
 }
 
+
+void application::test_update(float dt)
+{
+    const auto im {input_manager::instance()};
+    const auto [mx, my] {im->get_mouse_gl()};
+
+    if (im->key_pressed(SDL_SCANCODE_V)) {
+        graphics::set_vsync(!graphics::is_vsync());
+    }
+
+    if (im->key_pressed(SDL_SCANCODE_A)) {
+        std::println("ALLOCATING LARGE TEXTURE");
+        temp_vec.emplace_back(graphics::create_texture2d(2000, 2000, GL_RGBA8));
+    }
+    if (im->key_pressed(SDL_SCANCODE_D)) {
+        if (!temp_vec.empty()) {
+            std::println("DEALLOCATING LAST TEXTURE FROM VECTOR");
+            temp_vec.pop_back();
+        }
+    }
+
+    if (info.mouse_moved && 
+        im->mouse_down(mouse_button::LEFT)) {
+        std::println("================================================RESIZE================================================");
+        std::println("BEFORE: {} {}", canvas.width, canvas.height);
+        const auto rel_motion {graphics::get_relative_motion()};
+        const auto dx {rel_motion.x};
+        const auto dy {rel_motion.y};
+
+        const auto new_width {canvas.width + static_cast<int>(dx)};
+        const auto new_height {canvas.height + static_cast<int>(dy)};
+        std::println("NEW DIMS: {} {}", new_width, new_height);
+
+        gl::texture2d texture = graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA8);
+
+        temp_canvas.texture = graphics::create_texture2d(new_width, new_height, GL_RGBA8);
+        glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+        const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+        }
+        temp_canvas.width = new_width;
+        temp_canvas.height = new_height;
+        info.resized = true;
+        
+        std::swap(temp_canvas.buffer.id, canvas.buffer.id);
+        std::swap(temp_canvas.texture.id, canvas.texture.id);
+        std::swap(temp_canvas.width, canvas.width);
+        std::swap(temp_canvas.height, canvas.height);
+
+        //temp_canvas.buffer = std::exchange(canvas.buffer, std::move(temp_canvas.buffer));
+        //temp_canvas.texture = std::exchange(canvas.texture, std::move(temp_canvas.texture));
+        //temp_canvas.width = std::exchange(canvas.width, std::move(temp_canvas.width));
+        //temp_canvas.height = std::exchange(canvas.height, std::move(temp_canvas.height));
+        canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+        std::println("================================================RESIZE END================================================");
+    }
+
+}
+
 void application::draw()
 {
+    auto pr = [this]() {
+        std::println("CANVAS");
+        std::println("bufId: {}\ntexId: {}\nW {}\nH {}", canvas.buffer.id, 
+                canvas.texture.id, canvas.width, canvas.height);
+        std::println("TEMP CANVAS");
+        std::println("bufId: {}\ntexId: {}\nW {}\nH {}", canvas.buffer.id, 
+                canvas.texture.id, canvas.width, canvas.height);
+    };
+
+
     // Clear resized buffer and copy all contents from old to new.
     // Then swap struct info as well.
     if (info.resized) {
+        // I do need these to clear to BG color.
+        // Or we can manually update pixels on cpu. Kinda annoying and need to be careful
+        // with texture format
+        std::println("BEFORE");
+        pr();
         graphics::bind_frame_buffer(temp_canvas.buffer);
         graphics::set_viewport(0, 0, temp_canvas.width, temp_canvas.height);
         graphics::clear_buffer_color(temp_canvas.buffer.id, canvas.bg_color);
@@ -493,6 +575,8 @@ void application::draw()
         temp_canvas.width = std::exchange(canvas.width, std::move(temp_canvas.width));
         temp_canvas.height = std::exchange(canvas.height, std::move(temp_canvas.height));
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+        std::println("AFTER");
+        pr();
 
         info.resized = false;
     }

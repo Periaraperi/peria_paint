@@ -3,7 +3,6 @@
 #include <SDL3/SDL_video.h>
 
 #include <vector>
-#include <array>
 
 #include "graphics/gl_entities.hpp"
 #include "graphics/shader.hpp"
@@ -71,6 +70,7 @@ private:
     sdl::sdl_initializer sdl_initializer_;
 
     void update(float dt);
+    void test_update(float dt);
     void draw();
     void test_draw();
 
