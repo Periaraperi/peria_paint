@@ -61,12 +61,16 @@ texture2d::texture2d() noexcept
 }
 
 texture2d::~texture2d()
-{ std::println("Texture dtor()"); glDeleteTextures(1, &id); }
+{ 
+    std::println("Texture dtor() ID = {}", id); 
+    glDeleteTextures(1, &id); 
+    id = 0;
+}
 
 texture2d::texture2d(texture2d&& rhs) noexcept
-    :id{std::exchange(rhs.id, 0)}
 {
     std::println("texture2d move ctor()");
+    std::swap(this->id, rhs.id);
 }
 
 texture2d& texture2d::operator=(texture2d&& rhs) noexcept
@@ -74,7 +78,7 @@ texture2d& texture2d::operator=(texture2d&& rhs) noexcept
     std::println("texture2d move operator=()");
     if (&rhs == this) return *this;
 
-    this->id = std::exchange(rhs.id, 0);
+    std::swap(this->id, rhs.id);
     return *this;
 }
 

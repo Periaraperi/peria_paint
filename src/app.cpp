@@ -366,8 +366,8 @@ void application::update(float dt)
         //const auto dx {rel_motion.x};
         //const auto dy {rel_motion.y};
         //std::println("dx {} dy {}", dx, dy);
-        const auto dx {1000};
-        const auto dy {1000};
+        const auto dx {5000};
+        const auto dy {5000};
 
         const auto new_width {canvas.width + static_cast<int>(dx)};
         const auto new_height {canvas.height + static_cast<int>(dy)};
@@ -377,7 +377,9 @@ void application::update(float dt)
 
         // creating new texture with UPDATED w/h and storing it in temp_canvas.
         // whatever was inside it gets DESTROYED because move assignment is performed because RHS is prvalue.
+        std::println("aba tu washlis es yle");
         temp_canvas.texture = graphics::create_texture2d(new_width, new_height, GL_RGBA8);
+        std::println("aba yle");
 
         // here I am linking temp_frame_buffer to UPDATED texture.
         glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
@@ -398,7 +400,9 @@ void application::update(float dt)
         const auto new_width {canvas.width + static_cast<int>(dx)};
         const auto new_height {canvas.height + static_cast<int>(dy)};
 
+        std::println("aba tu washlis");
         temp_canvas.texture = graphics::create_texture2d(new_width, new_height, GL_RGBA8);
+        std::println("kek");
 
         glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
         const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
@@ -525,15 +529,15 @@ void application::test_update(float dt)
         temp_canvas.height = new_height;
         info.resized = true;
         
-        std::swap(temp_canvas.buffer.id, canvas.buffer.id);
-        std::swap(temp_canvas.texture.id, canvas.texture.id);
-        std::swap(temp_canvas.width, canvas.width);
-        std::swap(temp_canvas.height, canvas.height);
+        //std::swap(temp_canvas.buffer.id, canvas.buffer.id);
+        //std::swap(temp_canvas.texture.id, canvas.texture.id);
+        //std::swap(temp_canvas.width, canvas.width);
+        //std::swap(temp_canvas.height, canvas.height);
 
-        //temp_canvas.buffer = std::exchange(canvas.buffer, std::move(temp_canvas.buffer));
-        //temp_canvas.texture = std::exchange(canvas.texture, std::move(temp_canvas.texture));
-        //temp_canvas.width = std::exchange(canvas.width, std::move(temp_canvas.width));
-        //temp_canvas.height = std::exchange(canvas.height, std::move(temp_canvas.height));
+        temp_canvas.buffer = std::exchange(canvas.buffer, std::move(temp_canvas.buffer));
+        temp_canvas.texture = std::exchange(canvas.texture, std::move(temp_canvas.texture));
+        temp_canvas.width = std::exchange(canvas.width, std::move(temp_canvas.width));
+        temp_canvas.height = std::exchange(canvas.height, std::move(temp_canvas.height));
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
         std::println("================================================RESIZE END================================================");
     }
@@ -547,8 +551,8 @@ void application::draw()
         std::println("bufId: {}\ntexId: {}\nW {}\nH {}", canvas.buffer.id, 
                 canvas.texture.id, canvas.width, canvas.height);
         std::println("TEMP CANVAS");
-        std::println("bufId: {}\ntexId: {}\nW {}\nH {}", canvas.buffer.id, 
-                canvas.texture.id, canvas.width, canvas.height);
+        std::println("bufId: {}\ntexId: {}\nW {}\nH {}", temp_canvas.buffer.id, 
+                temp_canvas.texture.id, temp_canvas.width, temp_canvas.height);
     };
 
 
@@ -569,11 +573,16 @@ void application::draw()
         glCopyImageSubData(canvas.texture.id, GL_TEXTURE_2D , 0, 0, 0, 0,
                            temp_canvas.texture.id, GL_TEXTURE_2D, 0, 0, 0, 0, 
                            w, h, 1);
+        std::println("ids {} {}", canvas.buffer.id, temp_canvas.buffer.id);
 
-        temp_canvas.buffer = std::exchange(canvas.buffer, std::move(temp_canvas.buffer));
-        temp_canvas.texture = std::exchange(canvas.texture, std::move(temp_canvas.texture));
-        temp_canvas.width = std::exchange(canvas.width, std::move(temp_canvas.width));
-        temp_canvas.height = std::exchange(canvas.height, std::move(temp_canvas.height));
+        std::swap(temp_canvas.buffer.id, canvas.buffer.id);
+        std::swap(temp_canvas.texture.id, canvas.texture.id);
+        std::swap(temp_canvas.width, canvas.width);
+        std::swap(temp_canvas.height, canvas.height);
+        //temp_canvas.buffer = std::exchange(canvas.buffer, std::move(temp_canvas.buffer));
+        //temp_canvas.texture = std::exchange(canvas.texture, std::move(temp_canvas.texture));
+        //temp_canvas.width = std::exchange(canvas.width, std::move(temp_canvas.width));
+        //temp_canvas.height = std::exchange(canvas.height, std::move(temp_canvas.height));
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
         std::println("AFTER");
         pr();
