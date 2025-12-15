@@ -19,9 +19,10 @@ vertex_array::~vertex_array()
 { std::println("vertex_array dtor()"); glDeleteVertexArrays(1, &id); }
 
 vertex_array::vertex_array(vertex_array&& rhs) noexcept
-    :id{std::exchange(rhs.id, 0)}
 {
     std::println("vertex_array move ctor()");
+    id = rhs.id;
+    rhs.id = 0;
 }
 
 vertex_array& vertex_array::operator=(vertex_array&& rhs) noexcept
@@ -29,7 +30,7 @@ vertex_array& vertex_array::operator=(vertex_array&& rhs) noexcept
     std::println("vertex_array move operator=()");
     if (&rhs == this) return *this;
 
-    this->id = std::exchange(rhs.id, 0);
+    std::swap(id, rhs.id);
     return *this;
 }
 
@@ -40,9 +41,10 @@ named_buffer::~named_buffer()
 { std::println("named_buffer dtor()"); glDeleteBuffers(1, &id); }
 
 named_buffer::named_buffer(named_buffer&& rhs) noexcept
-    :id{std::exchange(rhs.id, 0)}
 {
     std::println("named_buffer move ctor()");
+    id = rhs.id;
+    rhs.id = 0;
 }
 
 named_buffer& named_buffer::operator=(named_buffer&& rhs) noexcept
@@ -50,7 +52,7 @@ named_buffer& named_buffer::operator=(named_buffer&& rhs) noexcept
     std::println("named_buffer move operator=()");
     if (&rhs == this) return *this;
 
-    this->id = std::exchange(rhs.id, 0);
+    std::swap(id, rhs.id);
     return *this;
 }
 
@@ -70,7 +72,8 @@ texture2d::~texture2d()
 texture2d::texture2d(texture2d&& rhs) noexcept
 {
     std::println("texture2d move ctor()");
-    std::swap(this->id, rhs.id);
+    id = rhs.id;
+    rhs.id = 0;
 }
 
 texture2d& texture2d::operator=(texture2d&& rhs) noexcept
@@ -78,7 +81,7 @@ texture2d& texture2d::operator=(texture2d&& rhs) noexcept
     std::println("texture2d move operator=()");
     if (&rhs == this) return *this;
 
-    std::swap(this->id, rhs.id);
+    std::swap(id, rhs.id);
     return *this;
 }
 
@@ -89,16 +92,17 @@ sampler::~sampler()
 { std::println("sampler dtor()"); glDeleteSamplers(1, &id); }
 
 sampler::sampler(sampler&& rhs) noexcept
-    :id{std::exchange(rhs.id, 0)}
 {
     std::println("sampler move ctor()");
+    id = rhs.id;
+    rhs.id = 0;
 }
 
 sampler& sampler::operator=(sampler&& rhs) noexcept
 {
     std::println("sampler move operator=()");
     if (&rhs == this) return *this;
-    this->id = std::exchange(rhs.id, 0);
+    std::swap(id, rhs.id);
     return *this;
 }
 
@@ -109,17 +113,17 @@ frame_buffer::~frame_buffer()
 { std::println("frame_buffer dtor()"); glDeleteFramebuffers(1, &id); }
 
 frame_buffer::frame_buffer(frame_buffer&& rhs) noexcept
-    :id{std::exchange(rhs.id, 0)}
 {
     std::println("frame_buffer move ctor()");
+    id = rhs.id;
+    rhs.id = 0;
 }
 
 frame_buffer& frame_buffer::operator=(frame_buffer&& rhs) noexcept
 {
     std::println("frame_buffer move operator=()");
     if (&rhs == this) return *this;
-
-    this->id = std::exchange(rhs.id, 0);
+    std::swap(id, rhs.id);
     return *this;
 }
 

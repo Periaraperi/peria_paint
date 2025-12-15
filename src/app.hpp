@@ -78,13 +78,16 @@ private:
     gl::vertex_array circle_vao;
     gl::vertex_array canvas_vao;
     gl::vertex_array line_vao;
+    gl::vertex_array line_resize_vao;
 
     gl::named_buffer circle_vbo;
     gl::named_buffer canvas_vbo;
     gl::named_buffer line_vbo;
+    gl::named_buffer line_resize_vbo;
 
     gl::named_buffer quad_ibo;
     gl::named_buffer line_ibo;
+    gl::named_buffer line_resize_ibo;
 
     gl::shader circle_shader;
     gl::shader textured_quad_shader;
@@ -123,6 +126,9 @@ private:
         bool should_draw {false};
         bool should_empty {false};
         bool resized {true};
+        bool resizing {false};
+        int new_width {};
+        int new_height {};
     } info;
 
     std::vector<brush_point> brush_points; // for brush stroke
