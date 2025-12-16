@@ -7,6 +7,8 @@
 #include "graphics/gl_entities.hpp"
 #include "graphics/shader.hpp"
 
+#include "math/vec.hpp"
+
 namespace peria {
 
 struct application_settings {
@@ -17,15 +19,13 @@ struct application_settings {
 };
 
 struct brush_point {
-    float x {};
-    float y {};
+    vec2 p;
     float r {};
 };
 
 // #TODO: change this later 
 struct line {
-    float x1 {}, y1 {};
-    float x2 {}, y2 {};
+    vec2 p1, p2;
     float thickness_1 {};
     float thickness_2 {};
 };
@@ -102,8 +102,7 @@ private:
 
         int width  {};
         int height {};
-        float pos_x {};
-        float pos_y {};
+        vec2 pos {};
         math::mat4f projection;
         graphics::color bg_color;
     } canvas;
@@ -116,8 +115,7 @@ private:
     } temp_canvas;
 
     struct info {
-        float world_offset_x {};
-        float world_offset_y {};
+        vec2 world_offset {};
         bool mouse_moved {};
         bool prev_mouse_moved {};
         float pan_speed {50.0f};

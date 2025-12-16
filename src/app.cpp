@@ -22,21 +22,51 @@ std::vector<peria::gl::texture2d> temp_vec;
 
 float zoom_scale {1.0f};
 
+template<typename T>
 [[nodiscard]]
-float world_to_screen_x(float x, float wox) noexcept
-{ return (x + wox)*zoom_scale; }
+peria::math::vec2<T> world_to_screen(const peria::math::vec2<T>& pos, const peria::math::vec2<T>& world_offset) noexcept
+{ return (pos + world_offset)*zoom_scale; }
 
+template<typename T>
 [[nodiscard]]
-float world_to_screen_y(float y, float woy) noexcept
-{ return (y + woy)*zoom_scale; }
+peria::math::vec2<T> screen_to_world(const peria::math::vec2<T>& pos, const peria::math::vec2<T>& world_offset) noexcept
+{ return ((pos * (1.0f/zoom_scale)) - world_offset); }
 
+template<typename T>
 [[nodiscard]]
-float screen_to_world_x(float x, float wox) noexcept
-{ return ((x / zoom_scale) - wox); }
+peria::math::vec3<T> world_to_screen(const peria::math::vec3<T>& pos, const peria::math::vec3<T>& world_offset) noexcept
+{ return (pos + world_offset)*zoom_scale; }
 
+template<typename T>
 [[nodiscard]]
-float screen_to_world_y(float y, float woy) noexcept
-{ return ((y / zoom_scale) - woy); }
+peria::math::vec3<T> screen_to_world(const peria::math::vec3<T>& pos, const peria::math::vec3<T>& world_offset) noexcept
+{ return ((pos * (1.0f/zoom_scale)) - world_offset); }
+
+template<typename T>
+[[nodiscard]]
+peria::math::vec4<T> world_to_screen(const peria::math::vec4<T>& pos, const peria::math::vec4<T>& world_offset) noexcept
+{ return (pos + world_offset)*zoom_scale; }
+
+template<typename T>
+[[nodiscard]]
+peria::math::vec4<T> screen_to_world(const peria::math::vec4<T>& pos, const peria::math::vec4<T>& world_offset) noexcept
+{ return ((pos * (1.0f/zoom_scale)) - world_offset); }
+
+//[[nodiscard]]
+//float world_to_screen_x(float x, float wox) noexcept
+//{ return (x + wox)*zoom_scale; }
+//
+//[[nodiscard]]
+//float world_to_screen_y(float y, float woy) noexcept
+//{ return (y + woy)*zoom_scale; }
+//
+//[[nodiscard]]
+//float screen_to_world_x(float x, float wox) noexcept
+//{ return ((x / zoom_scale) - wox); }
+//
+//[[nodiscard]]
+//float screen_to_world_y(float y, float woy) noexcept
+//{ return ((y / zoom_scale) - woy); }
 
 
 [[nodiscard]]
@@ -67,10 +97,17 @@ peria::brush_point get_point_on_path(const std::vector<peria::brush_point>& poin
     const float r {lerp(points[p1].r, points[p2].r, t)};
 
     return peria::brush_point {
-        0.5f * (c1*points[p0].x + c2*points[p1].x + c3*points[p2].x + c4*points[p3].x),
-        0.5f * (c1*points[p0].y + c2*points[p1].y + c3*points[p2].y + c4*points[p3].y),
-        r
+        0.5f * vec2{
+            (c1*points[p0].p.x + c2*points[p1].p.x + c3*points[p2].p.x + c4*points[p3].p.x),
+            (c1*points[p0].p.y + c2*points[p1].p.y + c3*points[p2].p.y + c4*points[p3].p.y)
+        }, r
     };
+
+    //return peria::brush_point {
+    //    0.5f * (c1*points[p0].x + c2*points[p1].x + c3*points[p2].x + c4*points[p3].x),
+    //    0.5f * (c1*points[p0].y + c2*points[p1].y + c3*points[p2].y + c4*points[p3].y),
+    //    r
+    //};
 }
 
 }
@@ -140,7 +177,7 @@ application::application(application_settings&& settings)
      line_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"},
      canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA8)},
             gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
-            static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, {}, graphics::WHITE},
+            static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, graphics::WHITE},
      temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA8)}}, {}, canvas.width, canvas.height}
 {
     if (!sdl_initializer_.initialized) return;
@@ -236,8 +273,7 @@ application::application(application_settings&& settings)
 
         textured_quad_shader.set_int("u_canvas_texture", 0);
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
-        canvas.pos_x = 0.5f*(static_cast<float>(graphics::get_screen_size().w));
-        canvas.pos_y = 0.5f*(static_cast<float>(graphics::get_screen_size().h));
+        canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
         info.new_width = canvas.width;
         info.new_height = canvas.height;
     }
@@ -308,8 +344,7 @@ void application::run()
             }
             else if (ev.type == SDL_EVENT_MOUSE_WHEEL) {
                 const auto [mx, my] {input_manager_->get_mouse_gl()};
-                float mouse_world_x {screen_to_world_x(mx, info.world_offset_x)};
-                float mouse_world_y {screen_to_world_y(my, info.world_offset_y)};
+                auto mouse_world {screen_to_world({mx, my}, info.world_offset)};
 
                 if (ev.wheel.y > 0.0f) {
                     zoom_scale *= 2.0f;
@@ -319,12 +354,9 @@ void application::run()
                     zoom_scale *= 0.5f;
                     zoom_scale = std::max(zoom_scale, 0.01f);
                 }
-                float mouse_world_after_zoom_x {screen_to_world_x(mx, info.world_offset_x)};
-                float mouse_world_after_zoom_y {screen_to_world_y(my, info.world_offset_y)};
+                auto mouse_world_after_zoom {screen_to_world({mx, my}, info.world_offset)};
 
-                info.world_offset_x += (mouse_world_after_zoom_x - mouse_world_x);
-                info.world_offset_y += (mouse_world_after_zoom_y - mouse_world_y);
-
+                info.world_offset += (mouse_world_after_zoom - mouse_world);
             }
         }
         
@@ -465,29 +497,28 @@ void application::update(float dt)
     // panning around
     if (info.mouse_moved && im->mouse_down(mouse_button::MID)) {
         const auto rel_motion {graphics::get_relative_motion()};
-        info.world_offset_x += (rel_motion.x/zoom_scale);
-        info.world_offset_y += (rel_motion.y/zoom_scale);
+        info.world_offset.x += (rel_motion.x/zoom_scale);
+        info.world_offset.y += (rel_motion.y/zoom_scale);
         return; // we don't want to draw while panning around
     }
 
     {
-        const auto canvas_world_center_x {canvas.pos_x};
-        const auto canvas_world_center_y {canvas.pos_y};
+        const auto canvas_world_center_x {canvas.pos.x};
+        const auto canvas_world_center_y {canvas.pos.y};
         const auto canvas_lower_left_x   {canvas_world_center_x-canvas.width*0.5f};
         const auto canvas_lower_left_y   {canvas_world_center_y-canvas.height*0.5f};
         const auto canvas_upper_right_x  {canvas_world_center_x+canvas.width*0.5f};
         const auto canvas_upper_right_y  {canvas_world_center_y+canvas.height*0.5f};
         //std::println("canvas lower {} {}", canvas_lower_left_x, canvas_lower_left_y);
 
-        const auto world_mx {screen_to_world_x(mx, info.world_offset_x)};
-        const auto world_my {screen_to_world_y(my, info.world_offset_y)};
-        bool inside_canvas {world_mx >= canvas_lower_left_x &&
-                            world_mx <= canvas_upper_right_x &&
-                            world_my >= canvas_lower_left_y &&
-                            world_my <= canvas_upper_right_y};
+        const auto world_mpos {screen_to_world({mx, my}, info.world_offset)};
+        bool inside_canvas {world_mpos.x >= canvas_lower_left_x &&
+                            world_mpos.x <= canvas_upper_right_x &&
+                            world_mpos.y >= canvas_lower_left_y &&
+                            world_mpos.y <= canvas_upper_right_y};
 
         if (im->mouse_released(mouse_button::LEFT) && inside_canvas && !info.mouse_moved) {
-            brush_points.emplace_back(brush_point{world_mx-canvas_lower_left_x, world_my-canvas_lower_left_y, info.brush_size*0.5f});
+            brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
             info.should_draw = true;
             info.should_empty = true;
             return;
@@ -496,15 +527,15 @@ void application::update(float dt)
         if ((info.prev_mouse_moved || info.mouse_moved) && !inside_canvas) {
             if (brush_points.size() >= 2) {
                 const auto idx {brush_points.size() - 1};
-                auto dir_x {brush_points[idx].x - brush_points[idx-1].x};
-                auto dir_y {brush_points[idx].y - brush_points[idx-1].y};
+                auto dir_x {brush_points[idx].p.x - brush_points[idx-1].p.x};
+                auto dir_y {brush_points[idx].p.y - brush_points[idx-1].p.y};
                 const auto len {std::sqrtf(dir_x*dir_x + dir_y*dir_y)};
                 dir_x /= len;
                 dir_y /= len;
                 const auto m {std::max(canvas.width, canvas.height)};
-                brush_points.emplace_back(brush_point{brush_points[idx].x+dir_x*m, brush_points[idx].y+dir_y*m, info.brush_size*0.5f});
+                brush_points.emplace_back(brush_point{{brush_points[idx].p.x+dir_x*m, brush_points[idx].p.y+dir_y*m}, info.brush_size*0.5f});
                 //static int xxxx {};
-                std::println("{} {}", brush_points.back().x, brush_points.back().y); 
+                std::println("{} {}", brush_points.back().p.x, brush_points.back().p.y); 
             }
 
             info.should_draw = true;
@@ -514,13 +545,13 @@ void application::update(float dt)
 
         if (info.mouse_moved) {
             if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
-                brush_points.emplace_back(brush_point{world_mx-canvas_lower_left_x, world_my-canvas_lower_left_y, info.brush_size*0.5f});
+                brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
                 info.should_draw = true;
                 info.should_empty = false;
             }
 
             if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
-                brush_points.emplace_back(brush_point{world_mx-canvas_lower_left_x, world_my-canvas_lower_left_y, info.brush_size*0.5f});
+                brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
                 info.should_draw = true;
                 info.should_empty = true;
             }
@@ -573,11 +604,6 @@ void application::test_update(float dt)
         temp_canvas.height = new_height;
         info.resized = true;
         
-        //std::swap(temp_canvas.buffer.id, canvas.buffer.id);
-        //std::swap(temp_canvas.texture.id, canvas.texture.id);
-        //std::swap(temp_canvas.width, canvas.width);
-        //std::swap(temp_canvas.height, canvas.height);
-
         temp_canvas.buffer = std::exchange(canvas.buffer, std::move(temp_canvas.buffer));
         temp_canvas.texture = std::exchange(canvas.texture, std::move(temp_canvas.texture));
         temp_canvas.width = std::exchange(canvas.width, std::move(temp_canvas.width));
@@ -625,10 +651,6 @@ void application::draw()
         std::swap(temp_canvas.texture.id, canvas.texture.id);
         std::swap(temp_canvas.width, canvas.width);
         std::swap(temp_canvas.height, canvas.height);
-        //temp_canvas.buffer = std::exchange(canvas.buffer, std::move(temp_canvas.buffer));
-        //temp_canvas.texture = std::exchange(canvas.texture, std::move(temp_canvas.texture));
-        //temp_canvas.width = std::exchange(canvas.width, std::move(temp_canvas.width));
-        //temp_canvas.height = std::exchange(canvas.height, std::move(temp_canvas.height));
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
         std::println("AFTER");
         pr();
@@ -648,12 +670,12 @@ void application::draw()
 
         // Draw brush stroke points
         for (std::size_t i{}; i<brush_points.size(); ++i) {
-            const auto& [x, y, r] {brush_points[i]};
-            math::mat4f m {math::translate(x, y, 0.0f)*
+            const auto& [pos, r] {brush_points[i]};
+            math::mat4f m {math::translate(pos.x, pos.y, 0.0f)*
                            math::scale(2*r, 2*r, 1.0f)};
             circle_shader.set_mat4("u_mvp", canvas.projection*m);
             circle_shader.set_float("u_radius", r);
-            circle_shader.set_vec2("u_center_world", x, y);
+            circle_shader.set_vec2("u_center_world", pos.x, pos.y);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
 
@@ -664,11 +686,11 @@ void application::draw()
 
         // Draw interpolated sample points on stroke points
         for (std::size_t i{}; i<samples.size(); ++i) {
-            math::mat4f m {math::translate(samples[i].x, samples[i].y, 0.0f)*
+            math::mat4f m {math::translate(samples[i].p.x, samples[i].p.y, 0.0f)*
                            math::scale(samples[i].r*2, samples[i].r*2, 1.0f)};
             circle_shader.set_mat4("u_mvp", canvas.projection*m);
             circle_shader.set_float("u_radius", samples[i].r);
-            circle_shader.set_vec2("u_center_world", samples[i].x, samples[i].y);
+            circle_shader.set_vec2("u_center_world", samples[i].p.x, samples[i].p.y);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
 
@@ -677,11 +699,11 @@ void application::draw()
         //DRAWS LINES BETWEEN MOUSE POINTS
 
         auto add_line = [this](const brush_point& p1, const brush_point& p2) {
-            const auto& x1 {p1.x};
-            const auto& y1 {p1.y};
+            const auto& x1 {p1.p.x};
+            const auto& y1 {p1.p.y};
             const auto& t1 {p1.r};
-            const auto& x2 {p2.x};
-            const auto& y2 {p2.y};
+            const auto& x2 {p2.p.x};
+            const auto& y2 {p2.p.y};
             const auto& t2 {p2.r};
 
             const float vec_x {x2-x1};
@@ -711,11 +733,11 @@ void application::draw()
         };
 
         for (std::size_t i{1}; i<samples.size(); ++i) {
-            const auto& x1 {samples[i-1].x};
-            const auto& y1 {samples[i-1].y};
+            const auto& x1 {samples[i-1].p.x};
+            const auto& y1 {samples[i-1].p.y};
             const auto& t1 {samples[i-1].r};
-            const auto& x2 {samples[i].x};
-            const auto& y2 {samples[i].y};
+            const auto& x2 {samples[i].p.x};
+            const auto& y2 {samples[i].p.y};
             const auto& t2 {samples[i].r};
 
             const float vec_x {x2-x1};
@@ -744,8 +766,8 @@ void application::draw()
             line_batcher.lines_data.push_back({{lower_right_x, lower_right_y}, {0.0f, 0.0f, 0.0f, 1}});
         }
         if (brush_points.size() >= 2 && samples.size() >= 2) {
-            add_line({brush_points[0].x, brush_points[0].y, brush_points[0].r}, samples[0]);
-            add_line(samples.back(), {brush_points.back().x, brush_points.back().y, brush_points.back().r});
+            add_line({{brush_points[0].p.x, brush_points[0].p.y}, brush_points[0].r}, samples[0]);
+            add_line(samples.back(), {{brush_points.back().p.x, brush_points.back().p.y}, brush_points.back().r});
         }
 
         graphics::bind_vertex_array(line_vao);
@@ -787,7 +809,8 @@ void application::draw()
         // I guess more appropriate name would be world to view??
         // In 2D panning and zooming is kinda different compared to 3D.
         // camera zooming and panning is incorporated in this model matrix.
-        math::mat4f model {math::translate(world_to_screen_x(canvas.pos_x, info.world_offset_x), world_to_screen_y(canvas.pos_y, info.world_offset_y), 0.0f)*
+        const auto world_pos {world_to_screen(canvas.pos, info.world_offset)};
+        math::mat4f model {math::translate(world_pos.x, world_pos.y, 0.0f)*
                            math::scale(zoom_scale*cw, zoom_scale*ch, 1.0f)};
 
         graphics::bind_vertex_array(canvas_vao);
@@ -798,7 +821,7 @@ void application::draw()
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
         if (info.resizing) {
-            model = math::translate(world_to_screen_x(canvas.pos_x, info.world_offset_x), world_to_screen_y(canvas.pos_y, info.world_offset_y), 0.0f)*
+            model = math::translate(world_pos.x, world_pos.y, 0.0f)*
                     math::scale(zoom_scale*static_cast<float>(info.new_width), zoom_scale*static_cast<float>(info.new_height), 1.0f);
 
             graphics::bind_vertex_array(canvas_vao);
@@ -829,12 +852,12 @@ void application::test_draw()
 
     circle_shader.set_vec4("u_color", graphics::color{0,0,0,1.0f});
     for (std::size_t i{}; i<ps.size(); ++i) {
-        math::mat4f m {math::translate(ps[i].x, ps[i].y, 0.0f)*
+        math::mat4f m {math::translate(ps[i].p.x, ps[i].p.y, 0.0f)*
                        math::scale(ps[i].r*2, ps[i].r*2, 1.0f)};
         circle_shader.set_mat4("u_mvp", window_projection*m);
         circle_shader.set_float("u_radius", ps[i].r);
         circle_shader.set_float("u_k", uk);
-        circle_shader.set_vec2("u_center_world", ps[i].x, ps[i].y);
+        circle_shader.set_vec2("u_center_world", ps[i].p.x, ps[i].p.y);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     }
 }
