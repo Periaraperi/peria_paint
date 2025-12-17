@@ -103,6 +103,10 @@ void clear_buffer_depth(u32 fbo, float depth_value) noexcept;
 
 gl::texture2d create_texture2d(int w, int h, u32 internal_format) noexcept;
 
+gl::texture2d create_texture2d_from_image(const char* path, std::int32_t& w, std::int32_t& h, std::int32_t& channels, bool flip = true) noexcept;
+
 gl::sampler create_sampler(int min_filter, int mag_filter, int wrap_s, int wrap_t, int wrap_r, const color& border_color=WHITE) noexcept;
+
+void write_to_png(const gl::texture2d& texture, int width, int height) noexcept;
 
 }

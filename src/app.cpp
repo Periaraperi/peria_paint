@@ -182,7 +182,6 @@ application::application(application_settings&& settings)
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
-
     int mx_sz {};
     glGetIntegerv(GL_MAX_TEXTURE_SIZE, &mx_sz);
     std::println("MAX TEX SIZE {}", mx_sz);
@@ -407,6 +406,35 @@ void application::update(float dt)
 
     if (im->key_pressed(SDL_SCANCODE_V)) {
         graphics::set_vsync(!graphics::is_vsync());
+    }
+
+    // TODO: FIX ME PLEASE!!
+    if (im->key_pressed(SDL_SCANCODE_L)) {
+        std::int32_t w, h, c;
+        canvas.texture = graphics::create_texture2d_from_image("./assets/ds1_tyvnasha.png", w, h, c);
+        canvas.width = w;
+        canvas.height = h;
+
+        glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
+        auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
+        }
+
+        temp_canvas.texture = graphics::create_texture2d_from_image("./assets/ds1_tyvnasha.png", w, h, c);
+        temp_canvas.width = w;
+        temp_canvas.height = h;
+
+        glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+        status = glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER);
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+        }
+        canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+    }
+
+    if (im->key_pressed(SDL_SCANCODE_S)) {
+        graphics::write_to_png(canvas.texture, canvas.width, canvas.height);
     }
 
     if (info.mouse_moved &&

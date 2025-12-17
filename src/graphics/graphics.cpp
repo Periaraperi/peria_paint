@@ -2,7 +2,19 @@
 
 #include <SDL3/SDL.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
+#include <print>
+#include <vector>
+
 namespace peria::graphics {
+
+using i32 = std::int32_t;
+using u8  = std::uint8_t;
 
 struct graphics_info {
     color bg {BLACK};
@@ -111,6 +123,7 @@ gl::texture2d create_texture2d(int w, int h, u32 internal_format) noexcept
     glTextureStorage2D(texture.id, 1, internal_format, w, h);
     return texture;
 }
+
 gl::sampler create_sampler(int min_filter, int mag_filter, int wrap_s, int wrap_t, int wrap_r, const color& border_color) noexcept
 {
     gl::sampler sampler;
@@ -127,5 +140,41 @@ gl::sampler create_sampler(int min_filter, int mag_filter, int wrap_s, int wrap_
     return sampler;
 }
 
+gl::texture2d create_texture2d_from_image(const char* path, i32& w, i32& h, i32& channels, bool flip /* = true*/) noexcept
+{
+    stbi_set_flip_vertically_on_load(flip);
+
+    i32 width, height, channel_count;
+    u8* data {stbi_load(path, &width, &height, &channel_count, 0)};
+
+    if (data == nullptr) {
+        std::println("failed to load res: ", path);
+        return {};
+    }
+
+    i32 internal_format {channel_count == 4 ? GL_RGBA8 : GL_RGB8};
+    i32 format          {channel_count == 4 ? GL_RGBA : GL_RGB};
+
+    gl::texture2d texture;
+    glTextureStorage2D(texture.id, 1, static_cast<GLenum>(internal_format), width, height);
+    glTextureSubImage2D(texture.id, 0, 0, 0, width, height, static_cast<GLenum>(format), GL_UNSIGNED_BYTE, data);
+    glGenerateTextureMipmap(texture.id);
+
+    stbi_image_free(data); 
+    data = nullptr;
+    w = width;
+    h = height;
+    channels = channel_count;
+
+    return texture;
+}
+
+void write_to_png(const gl::texture2d& texture, int width, int height) noexcept
+{
+    std::vector<u8> data(static_cast<std::size_t>(width*height*4), 0);
+    glGetTextureImage(texture.id, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.size()*sizeof(u8), &data[0]);
+    stbi_flip_vertically_on_write(1);
+    stbi_write_png("kek.png", width, height, 4, data.data(), width*4*sizeof(u8));
+}
 
 }

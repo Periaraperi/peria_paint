@@ -32,6 +32,7 @@ if (UNIX)
     target_include_directories(${PROJECT_NAME} PRIVATE
         ${SRC_DIR}
         ${EXTERNAL_DIR}/glad/include
+        ${EXTERNAL_DIR}/stb_image/
         ${SDL3_INCLUDE_DIRS}
     )
     target_link_libraries(${PROJECT_NAME} PRIVATE ${SDL3_LIBRARIES})
