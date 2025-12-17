@@ -15,8 +15,6 @@ namespace {
 
 constexpr bool TESTING {false};
 constexpr int MAX_FPS {500};
-float uk {0.0f};
-float RADIUS {10.0f};
 std::vector<peria::brush_point> ps;
 std::vector<peria::gl::texture2d> temp_vec; 
 
@@ -52,23 +50,6 @@ template<typename T>
 peria::math::vec4<T> screen_to_world(const peria::math::vec4<T>& pos, const peria::math::vec4<T>& world_offset) noexcept
 { return ((pos * (1.0f/zoom_scale)) - world_offset); }
 
-//[[nodiscard]]
-//float world_to_screen_x(float x, float wox) noexcept
-//{ return (x + wox)*zoom_scale; }
-//
-//[[nodiscard]]
-//float world_to_screen_y(float y, float woy) noexcept
-//{ return (y + woy)*zoom_scale; }
-//
-//[[nodiscard]]
-//float screen_to_world_x(float x, float wox) noexcept
-//{ return ((x / zoom_scale) - wox); }
-//
-//[[nodiscard]]
-//float screen_to_world_y(float y, float woy) noexcept
-//{ return ((y / zoom_scale) - woy); }
-
-
 [[nodiscard]]
 float lerp(float a, float b, float t) noexcept
 { return a*(1.0f - t) + b*t; }
@@ -102,12 +83,6 @@ peria::brush_point get_point_on_path(const std::vector<peria::brush_point>& poin
             (c1*points[p0].p.y + c2*points[p1].p.y + c3*points[p2].p.y + c4*points[p3].p.y)
         }, r
     };
-
-    //return peria::brush_point {
-    //    0.5f * (c1*points[p0].x + c2*points[p1].x + c3*points[p2].x + c4*points[p3].x),
-    //    0.5f * (c1*points[p0].y + c2*points[p1].y + c3*points[p2].y + c4*points[p3].y),
-    //    r
-    //};
 }
 
 }
@@ -382,17 +357,10 @@ void application::run()
     }
 }
 
-static float zm {1.0f};
-
 void application::update(float dt)
 {
     const auto im {input_manager::instance()};
     const auto [mx, my] {im->get_mouse_gl()};
-    //std::println("Mouse in screenspace {} {}", mx, my);
-    //std::println("Mouse in worldspace {} {}", mx-info.world_offset_x, my-info.world_offset_y);
-    //std::println("Offset {} {}", info.world_offset_x, info.world_offset_y);
-    //std::println("canvas pos {} {}", canvas.pos_x, canvas.pos_y);
-    //std::println("canvas pos {} {}", canvas.pos_x+info.world_offset_x, canvas.pos_y+info.world_offset_y);
     info.should_draw = false;
 
     if (im->key_down(SDL_SCANCODE_W)) {
@@ -463,64 +431,8 @@ void application::update(float dt)
         }
         info.resizing = false;
         info.resized = true;
-        //info.new_width = canvas.width;
-        //info.new_height = canvas.height;
         return;
     }
-
-    // make canvas bigger
-    // TODO: revisit this later. We will recreate texture many many times as long as we are dragging.
-    //       maybe better option would be to drag and only resize onRelease. 
-    //       We can draw outline for "new" bounds
-    //if (im->key_pressed(SDL_SCANCODE_O)) {
-    /*
-    if (info.mouse_moved &&
-        im->mouse_down(mouse_button::MID) &&
-        im->key_down(SDL_SCANCODE_LSHIFT)) {
-
-        const auto rel_motion {graphics::get_relative_motion()};
-        const auto dx {rel_motion.x};
-        const auto dy {rel_motion.y};
-
-        const auto new_width {canvas.width + static_cast<int>(dx)};
-        const auto new_height {canvas.height + static_cast<int>(dy)};
-
-        std::println("aba tu washlis es yle");
-        temp_canvas.texture = graphics::create_texture2d(new_width, new_height, GL_RGBA8);
-        std::println("aba yle");
-
-        glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
-        const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
-        if (status != GL_FRAMEBUFFER_COMPLETE) {
-            std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
-        }
-        temp_canvas.width = new_width;
-        temp_canvas.height = new_height;
-        info.resized = true;
-        return;
-    }
-    */
-    //if (im->key_pressed(SDL_SCANCODE_P)) {
-    //    const auto dx {-1000};
-    //    const auto dy {-1000};
-
-    //    const auto new_width {canvas.width + static_cast<int>(dx)};
-    //    const auto new_height {canvas.height + static_cast<int>(dy)};
-
-    //    std::println("aba tu washlis");
-    //    temp_canvas.texture = graphics::create_texture2d(new_width, new_height, GL_RGBA8);
-    //    std::println("kek");
-
-    //    glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
-    //    const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
-    //    if (status != GL_FRAMEBUFFER_COMPLETE) {
-    //        std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
-    //    }
-    //    temp_canvas.width = new_width;
-    //    temp_canvas.height = new_height;
-    //    info.resized = true;
-    //    return;
-    //}
 
     // panning around
     if (info.mouse_moved && im->mouse_down(mouse_button::MID)) {
@@ -537,7 +449,6 @@ void application::update(float dt)
         const auto canvas_lower_left_y   {canvas_world_center_y-canvas.height*0.5f};
         const auto canvas_upper_right_x  {canvas_world_center_x+canvas.width*0.5f};
         const auto canvas_upper_right_y  {canvas_world_center_y+canvas.height*0.5f};
-        //std::println("canvas lower {} {}", canvas_lower_left_x, canvas_lower_left_y);
 
         const auto world_mpos {screen_to_world({mx, my}, info.world_offset)};
         bool inside_canvas {world_mpos.x >= canvas_lower_left_x &&
@@ -552,6 +463,8 @@ void application::update(float dt)
             return;
         }
 
+        // TODO: Fix this shit. This code is about holding mouse while drawing
+        // and going outside of canvas stuff.
         if ((info.prev_mouse_moved || info.mouse_moved) && !inside_canvas) {
             if (brush_points.size() >= 2) {
                 const auto idx {brush_points.size() - 1};
@@ -562,8 +475,6 @@ void application::update(float dt)
                 dir_y /= len;
                 const auto m {std::max(canvas.width, canvas.height)};
                 brush_points.emplace_back(brush_point{{brush_points[idx].p.x+dir_x*m, brush_points[idx].p.y+dir_y*m}, info.brush_size*0.5f});
-                //static int xxxx {};
-                std::println("{} {}", brush_points.back().p.x, brush_points.back().p.y); 
             }
 
             info.should_draw = true;
@@ -588,63 +499,13 @@ void application::update(float dt)
 }
 
 
-void application::test_update(float dt)
-{
-    const auto im {input_manager::instance()};
-    const auto [mx, my] {im->get_mouse_gl()};
-
-    if (im->key_pressed(SDL_SCANCODE_V)) {
-        graphics::set_vsync(!graphics::is_vsync());
-    }
-
-    if (im->key_pressed(SDL_SCANCODE_A)) {
-        std::println("ALLOCATING LARGE TEXTURE");
-        temp_vec.emplace_back(graphics::create_texture2d(2000, 2000, GL_RGBA8));
-    }
-    if (im->key_pressed(SDL_SCANCODE_D)) {
-        if (!temp_vec.empty()) {
-            std::println("DEALLOCATING LAST TEXTURE FROM VECTOR");
-            temp_vec.pop_back();
-        }
-    }
-
-    if (info.mouse_moved && 
-        im->mouse_down(mouse_button::LEFT)) {
-        std::println("================================================RESIZE================================================");
-        std::println("BEFORE: {} {}", canvas.width, canvas.height);
-        const auto rel_motion {graphics::get_relative_motion()};
-        const auto dx {rel_motion.x};
-        const auto dy {rel_motion.y};
-
-        const auto new_width {canvas.width + static_cast<int>(dx)};
-        const auto new_height {canvas.height + static_cast<int>(dy)};
-        std::println("NEW DIMS: {} {}", new_width, new_height);
-
-        gl::texture2d texture = graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA8);
-
-        temp_canvas.texture = graphics::create_texture2d(new_width, new_height, GL_RGBA8);
-        glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
-        const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
-        if (status != GL_FRAMEBUFFER_COMPLETE) {
-            std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
-        }
-        temp_canvas.width = new_width;
-        temp_canvas.height = new_height;
-        info.resized = true;
-        
-        temp_canvas.buffer = std::exchange(canvas.buffer, std::move(temp_canvas.buffer));
-        temp_canvas.texture = std::exchange(canvas.texture, std::move(temp_canvas.texture));
-        temp_canvas.width = std::exchange(canvas.width, std::move(temp_canvas.width));
-        temp_canvas.height = std::exchange(canvas.height, std::move(temp_canvas.height));
-        canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
-        std::println("================================================RESIZE END================================================");
-    }
-
-}
+void application::test_update([[maybe_unused]] float dt)
+{}
 
 void application::draw()
 {
-    auto pr = [this]() {
+    auto pr = [this](const char* s) {
+        std::println("{}", s);
         std::println("CANVAS");
         std::println("bufId: {}\ntexId: {}\nW {}\nH {}", canvas.buffer.id, 
                 canvas.texture.id, canvas.width, canvas.height);
@@ -662,8 +523,6 @@ void application::draw()
         // I do need these to clear to BG color.
         // Or we can manually update pixels on cpu. Kinda annoying and need to be careful
         // with texture format
-        std::println("BEFORE");
-        pr();
         graphics::bind_frame_buffer(temp_canvas.buffer);
         graphics::set_viewport(0, 0, temp_canvas.width, temp_canvas.height);
         graphics::clear_buffer_color(temp_canvas.buffer.id, canvas.bg_color);
@@ -680,8 +539,6 @@ void application::draw()
         std::swap(temp_canvas.width, canvas.width);
         std::swap(temp_canvas.height, canvas.height);
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
-        std::println("AFTER");
-        pr();
 
         info.resized = false;
     }
@@ -724,7 +581,7 @@ void application::draw()
 
         // Draw lines between interpolated points
 
-        //DRAWS LINES BETWEEN MOUSE POINTS
+        // DRAWS LINES BETWEEN MOUSE POINTS
 
         auto add_line = [this](const brush_point& p1, const brush_point& p2) {
             const auto& x1 {p1.p.x};
@@ -805,7 +662,6 @@ void application::draw()
         int line_count {static_cast<int>((line_batcher.lines_data.size()/4))};
         int iterations {line_count / MAX_PER_BATCH};
         int leftover   {line_count - (MAX_PER_BATCH*iterations)};
-        //std::println("{}", line_count);
         for (int i{}; i<iterations; ++i) {
             graphics::buffer_upload_subdata(line_vbo, 0, 4*MAX_PER_BATCH*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+i*MAX_PER_BATCH*4);
             glDrawElements(GL_TRIANGLES, MAX_PER_BATCH*6, GL_UNSIGNED_INT, nullptr);
@@ -831,9 +687,6 @@ void application::draw()
         const auto cw {static_cast<float>(canvas.width)};
         const auto ch {static_cast<float>(canvas.height)};
 
-        //math::mat4f model {math::translate(canvas.pos_x+info.world_offset_x, canvas.pos_y+info.world_offset_y, 0.0f)*
-        //                   math::scale(zoom_scale*cw, zoom_scale*ch, 1.0f)};
-
         // I guess more appropriate name would be world to view??
         // In 2D panning and zooming is kinda different compared to 3D.
         // camera zooming and panning is incorporated in this model matrix.
@@ -848,6 +701,7 @@ void application::draw()
         graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
+        // TODO: reimplement this in a better way.
         if (info.resizing) {
             model = math::translate(world_pos.x, world_pos.y, 0.0f)*
                     math::scale(zoom_scale*static_cast<float>(info.new_width), zoom_scale*static_cast<float>(info.new_height), 1.0f);
@@ -859,35 +713,12 @@ void application::draw()
             graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
         }
     }
 
 }
 
-// THIS is purely for experimenting and testing shaders, different shapes,
-// and different approaches
 void application::test_draw()
-{
-    graphics::bind_frame_buffer_default();
-    graphics::clear_buffer_all(0, graphics::TEAL, 1.0f, 0);
-    graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
-
-    const auto [mx, my] {input_manager::instance()->get_mouse_gl()};
-
-    graphics::bind_vertex_array(circle_vao);
-    circle_shader.use_shader();
-
-    circle_shader.set_vec4("u_color", graphics::color{0,0,0,1.0f});
-    for (std::size_t i{}; i<ps.size(); ++i) {
-        math::mat4f m {math::translate(ps[i].p.x, ps[i].p.y, 0.0f)*
-                       math::scale(ps[i].r*2, ps[i].r*2, 1.0f)};
-        circle_shader.set_mat4("u_mvp", window_projection*m);
-        circle_shader.set_float("u_radius", ps[i].r);
-        circle_shader.set_float("u_k", uk);
-        circle_shader.set_vec2("u_center_world", ps[i].p.x, ps[i].p.y);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-    }
-}
+{}
 
 }
