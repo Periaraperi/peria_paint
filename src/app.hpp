@@ -79,11 +79,13 @@ private:
     gl::vertex_array canvas_vao;
     gl::vertex_array line_vao;
     gl::vertex_array line_resize_vao;
+    gl::vertex_array resize_button_quad_vao;
 
     gl::named_buffer circle_vbo;
     gl::named_buffer canvas_vbo;
     gl::named_buffer line_vbo;
     gl::named_buffer line_resize_vbo;
+    gl::named_buffer resize_button_quad_vbo;
 
     gl::named_buffer quad_ibo;
     gl::named_buffer line_ibo;
@@ -127,6 +129,7 @@ private:
         bool resizing {false};
         int new_width {};
         int new_height {};
+        bool in_resize_mode {false};
     } info;
 
     std::vector<brush_point> brush_points; // for brush stroke

@@ -231,6 +231,19 @@ application::application(application_settings&& settings)
             graphics::vao_connect_ibo(line_resize_vao, line_resize_ibo);
         }
 
+        {
+            std::array<gl::vertex<gl::pos2, gl::color4>, 4> resize_button_quad {{
+                {{-0.5f, -0.5f}, {0.0f, 0.0f, 0.5f, 1.0f}},
+                {{-0.5f,  0.5f}, {0.0f, 0.0f, 0.5f, 1.0f}},
+                {{ 0.5f,  0.5f}, {0.0f, 0.0f, 0.5f, 1.0f}},
+                {{ 0.5f, -0.5f}, {0.0f, 0.0f, 0.5f, 1.0f}}
+            }};
+            graphics::buffer_upload_data(resize_button_quad_vbo, resize_button_quad, GL_STATIC_DRAW);
+            graphics::vao_configure<gl::pos2, gl::color4>(resize_button_quad_vao, resize_button_quad_vbo, 0);
+            graphics::vao_connect_ibo(resize_button_quad_vao, quad_ibo);
+        }
+
+
         // CANVAS FRAME BUFFER AND COLOR ATTACHMENTS
         {
             glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
@@ -376,6 +389,11 @@ void application::update(float dt)
         graphics::set_vsync(!graphics::is_vsync());
     }
 
+    if (im->key_pressed(SDL_SCANCODE_R)) {
+        if (info.in_resize_mode) info.in_resize_mode = false;
+        else                     info.in_resize_mode = true;
+    }
+
     // TODO: FIX ME PLEASE!!
     if (im->key_pressed(SDL_SCANCODE_L)) {
         std::int32_t w, h, c;
@@ -451,10 +469,46 @@ void application::update(float dt)
         const auto canvas_upper_right_y  {canvas_world_center_y+canvas.height*0.5f};
 
         const auto world_mpos {screen_to_world({mx, my}, info.world_offset)};
+        std::println("world mpos {}, {}", world_mpos.x, world_mpos.y);
+        std::println("screen mpos {}, {}", mx, my);
         bool inside_canvas {world_mpos.x >= canvas_lower_left_x &&
                             world_mpos.x <= canvas_upper_right_x &&
                             world_mpos.y >= canvas_lower_left_y &&
                             world_mpos.y <= canvas_upper_right_y};
+
+        auto mouse_inside_button = [this, &world_mpos](int& i) {
+            std::array<veci2, 8> dirs {{
+                {-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}
+            }};
+            constexpr int resize_button_len {15};
+            int k {};
+            for (const auto& [dx, dy]:dirs) {
+                const vec2 button_world_pos {
+                    canvas.pos.x+(0.5f*canvas.width*dx),
+                    canvas.pos.y+(0.5f*canvas.height*dy),
+                };
+                const auto button_lower_left_x   {button_world_pos.x-resize_button_len*0.5f};
+                const auto button_lower_left_y   {button_world_pos.y-resize_button_len*0.5f};
+                const auto button_upper_right_x  {button_world_pos.x+resize_button_len*0.5f};
+                const auto button_upper_right_y  {button_world_pos.y+resize_button_len*0.5f};
+                bool inside_button {world_mpos.x >= button_lower_left_x &&
+                                    world_mpos.x <= button_upper_right_x &&
+                                    world_mpos.y >= button_lower_left_y &&
+                                    world_mpos.y <= button_upper_right_y};
+                if (inside_button) {
+                    i = k;
+                    return true;
+                }
+                ++k;
+            }
+            return false;
+        };
+
+        int index {-1};
+        if (info.in_resize_mode && mouse_inside_button(index) && im->mouse_down(mouse_button::LEFT)) {
+            std::println("We are clicking button {}", index);
+        }
+
 
         if (im->mouse_released(mouse_button::LEFT) && inside_canvas && !info.mouse_moved) {
             brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
@@ -700,6 +754,23 @@ void application::draw()
         textured_quad_shader.set_float("u_temp_toggle", 1.0f);
         graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+        
+        if (info.in_resize_mode) {
+            // line shader is basically colored quad shader, RENAME later
+            line_shader.use_shader();
+            std::array<veci2, 8> dirs {{
+                {-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}
+            }};
+            constexpr int resize_button_len {15};
+            for (const auto& [dx, dy]:dirs) {
+                math::mat4f quad_model {math::translate(world_pos.x+(0.5f*cw*zoom_scale*dx), world_pos.y+(0.5f*ch*zoom_scale*dy), 0.0f)*
+                                        math::scale(zoom_scale*resize_button_len, zoom_scale*resize_button_len, 1.0f)};
+                line_shader.set_mat4("u_mvp", window_projection*quad_model);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+            }
+        }
+
 
         // TODO: reimplement this in a better way.
         if (info.resizing) {
