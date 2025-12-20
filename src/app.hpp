@@ -129,7 +129,6 @@ private:
         bool resizing {false};
         int new_width {};
         int new_height {};
-        vec2 resize_offset {};
         bool in_resize_mode {false};
         int resize_button_index {-1};
     } info;

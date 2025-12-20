@@ -402,7 +402,7 @@ void application::update(float dt)
     // TODO: FIX ME PLEASE!!
     //if (im->key_pressed(SDL_SCANCODE_L)) {
     //    std::int32_t w, h, c;
-    //    canvas.texture = graphics::create_texture2d_from_image("./assets/ds1_tyvnasha.png", w, h, c);
+    //    canvas.texture = graphics::create_texture2d_from_image("./test/ds1_tyvnasha.png", w, h, c);
     //    canvas.width = w;
     //    canvas.height = h;
 
@@ -412,7 +412,7 @@ void application::update(float dt)
     //        std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
     //    }
 
-    //    temp_canvas.texture = graphics::create_texture2d_from_image("./assets/ds1_tyvnasha.png", w, h, c);
+    //    temp_canvas.texture = graphics::create_texture2d_from_image("./test/ds1_tyvnasha.png", w, h, c);
     //    temp_canvas.width = w;
     //    temp_canvas.height = h;
 
@@ -625,16 +625,24 @@ void application::draw()
                 else        src_x = -dw;
                 if (dh > 0) dst_y = dh;
                 else        src_y = -dh;
+                canvas.pos += vec2{-dw*0.5f, -dh*0.5f};
                 break;
             case 1: 
             case 2:
                 if (dw > 0) dst_x = dw;
                 else        src_x = -dw;
+                canvas.pos += vec2{-dw*0.5f, dh*0.5f};
+                break;
+            case 3:
+            case 4:
+            case 5:
+                canvas.pos += vec2{dw*0.5f, dh*0.5f};
                 break;
             case 6: 
             case 7:
                 if (dh > 0) dst_y = dh;
                 else        src_y = -dh;
+                canvas.pos += vec2{dw*0.5f, -dh*0.5f};
                 break;
             default:
                 break;
