@@ -129,9 +129,14 @@ private:
         bool resizing {false};
         int new_width {};
         int new_height {};
+        vec2 resize_offset {};
         bool in_resize_mode {false};
+        int resize_button_index {-1};
     } info;
 
+    std::array<veci2, 8> resize_dirs {{
+        {-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}
+    }};
     std::vector<brush_point> brush_points; // for brush stroke
 
     static constexpr int MAX_PER_BATCH {4096}; // count

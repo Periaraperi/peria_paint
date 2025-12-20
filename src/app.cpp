@@ -385,6 +385,10 @@ void application::update(float dt)
         info.brush_size = std::max(info.brush_size, 2.0f);
     }
 
+    if (im->key_pressed(SDL_SCANCODE_S)) {
+        graphics::write_to_png(canvas.texture, canvas.width, canvas.height);
+    }
+
     if (im->key_pressed(SDL_SCANCODE_V)) {
         graphics::set_vsync(!graphics::is_vsync());
     }
@@ -394,62 +398,62 @@ void application::update(float dt)
         else                     info.in_resize_mode = true;
     }
 
+    // loading image and putting it onto canvas
     // TODO: FIX ME PLEASE!!
-    if (im->key_pressed(SDL_SCANCODE_L)) {
-        std::int32_t w, h, c;
-        canvas.texture = graphics::create_texture2d_from_image("./assets/ds1_tyvnasha.png", w, h, c);
-        canvas.width = w;
-        canvas.height = h;
+    //if (im->key_pressed(SDL_SCANCODE_L)) {
+    //    std::int32_t w, h, c;
+    //    canvas.texture = graphics::create_texture2d_from_image("./assets/ds1_tyvnasha.png", w, h, c);
+    //    canvas.width = w;
+    //    canvas.height = h;
 
-        glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
-        auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
-        if (status != GL_FRAMEBUFFER_COMPLETE) {
-            std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
+    //    glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
+    //    auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
+    //    if (status != GL_FRAMEBUFFER_COMPLETE) {
+    //        std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
+    //    }
+
+    //    temp_canvas.texture = graphics::create_texture2d_from_image("./assets/ds1_tyvnasha.png", w, h, c);
+    //    temp_canvas.width = w;
+    //    temp_canvas.height = h;
+
+    //    glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+    //    status = glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER);
+    //    if (status != GL_FRAMEBUFFER_COMPLETE) {
+    //        std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+    //    }
+    //    canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+    //}
+
+    // resizing the old way
+    if (0) {
+        if (info.mouse_moved &&
+            im->mouse_down(mouse_button::MID) &&
+            im->key_down(SDL_SCANCODE_LSHIFT)) {
+            info.resizing = true;
+
+            const auto rel_motion {graphics::get_relative_motion()};
+            const auto dx {rel_motion.x};
+            const auto dy {rel_motion.y};
+
+            info.new_width  += static_cast<int>(dx);
+            info.new_height += static_cast<int>(dy);
+            return;
         }
 
-        temp_canvas.texture = graphics::create_texture2d_from_image("./assets/ds1_tyvnasha.png", w, h, c);
-        temp_canvas.width = w;
-        temp_canvas.height = h;
+        if (im->mouse_released(mouse_button::MID) && info.resizing) {
+            std::println("aba tu washlis es yle");
+            temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA8);
+            std::println("aba yle");
 
-        glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
-        status = glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER);
-        if (status != GL_FRAMEBUFFER_COMPLETE) {
-            std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+            glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+            const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
+            if (status != GL_FRAMEBUFFER_COMPLETE) {
+                std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+            }
+            info.resizing = false;
+            info.resized = true;
+            return;
         }
-        canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
-    }
-
-    if (im->key_pressed(SDL_SCANCODE_S)) {
-        graphics::write_to_png(canvas.texture, canvas.width, canvas.height);
-    }
-
-    if (info.mouse_moved &&
-        im->mouse_down(mouse_button::MID) &&
-        im->key_down(SDL_SCANCODE_LSHIFT)) {
-        info.resizing = true;
-
-        const auto rel_motion {graphics::get_relative_motion()};
-        const auto dx {rel_motion.x};
-        const auto dy {rel_motion.y};
-
-        info.new_width  += static_cast<int>(dx);
-        info.new_height += static_cast<int>(dy);
-        return;
-    }
-
-    if (im->mouse_released(mouse_button::MID) && info.resizing) {
-        std::println("aba tu washlis es yle");
-        temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA8);
-        std::println("aba yle");
-
-        glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
-        const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
-        if (status != GL_FRAMEBUFFER_COMPLETE) {
-            std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
-        }
-        info.resizing = false;
-        info.resized = true;
-        return;
     }
 
     // panning around
@@ -469,20 +473,17 @@ void application::update(float dt)
         const auto canvas_upper_right_y  {canvas_world_center_y+canvas.height*0.5f};
 
         const auto world_mpos {screen_to_world({mx, my}, info.world_offset)};
-        std::println("world mpos {}, {}", world_mpos.x, world_mpos.y);
-        std::println("screen mpos {}, {}", mx, my);
+        //std::println("world mpos {}, {}", world_mpos.x, world_mpos.y);
+        //std::println("screen mpos {}, {}", mx, my);
         bool inside_canvas {world_mpos.x >= canvas_lower_left_x &&
                             world_mpos.x <= canvas_upper_right_x &&
                             world_mpos.y >= canvas_lower_left_y &&
                             world_mpos.y <= canvas_upper_right_y};
 
-        auto mouse_inside_button = [this, &world_mpos](int& i) {
-            std::array<veci2, 8> dirs {{
-                {-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}
-            }};
+        auto mouse_inside_button = [this, &world_mpos]() -> int {
             constexpr int resize_button_len {15};
             int k {};
-            for (const auto& [dx, dy]:dirs) {
+            for (const auto& [dx, dy]:resize_dirs) {
                 const vec2 button_world_pos {
                     canvas.pos.x+(0.5f*canvas.width*dx),
                     canvas.pos.y+(0.5f*canvas.height*dy),
@@ -496,57 +497,85 @@ void application::update(float dt)
                                     world_mpos.y >= button_lower_left_y &&
                                     world_mpos.y <= button_upper_right_y};
                 if (inside_button) {
-                    i = k;
-                    return true;
+                    return k;
                 }
                 ++k;
             }
-            return false;
+            return -1;
         };
 
-        int index {-1};
-        if (info.in_resize_mode && mouse_inside_button(index) && im->mouse_down(mouse_button::LEFT)) {
-            std::println("We are clicking button {}", index);
-        }
-
-
-        if (im->mouse_released(mouse_button::LEFT) && inside_canvas && !info.mouse_moved) {
-            brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
-            info.should_draw = true;
-            info.should_empty = true;
-            return;
-        }
-
-        // TODO: Fix this shit. This code is about holding mouse while drawing
-        // and going outside of canvas stuff.
-        if ((info.prev_mouse_moved || info.mouse_moved) && !inside_canvas) {
-            if (brush_points.size() >= 2) {
-                const auto idx {brush_points.size() - 1};
-                auto dir_x {brush_points[idx].p.x - brush_points[idx-1].p.x};
-                auto dir_y {brush_points[idx].p.y - brush_points[idx-1].p.y};
-                const auto len {std::sqrtf(dir_x*dir_x + dir_y*dir_y)};
-                dir_x /= len;
-                dir_y /= len;
-                const auto m {std::max(canvas.width, canvas.height)};
-                brush_points.emplace_back(brush_point{{brush_points[idx].p.x+dir_x*m, brush_points[idx].p.y+dir_y*m}, info.brush_size*0.5f});
+        if (info.in_resize_mode) {
+            if (!info.resizing) {
+                // determine if we are resizing, and from which button
+                const auto index {mouse_inside_button()};
+                std::println("We are inside button {}", index);
+                if(index != -1 && im->mouse_pressed(mouse_button::LEFT)) {
+                    info.resizing = true;
+                    info.resize_button_index = index;
+                }
             }
+            if (info.resizing && im->mouse_down(mouse_button::LEFT)) {
+                const auto rel_motion {graphics::get_relative_motion()};
+                const auto dx {rel_motion.x*(resize_dirs[info.resize_button_index].x)};
+                const auto dy {rel_motion.y*(resize_dirs[info.resize_button_index].y)};
 
-            info.should_draw = true;
-            info.should_empty = true;
-            return;
-        }
+                info.new_width  += static_cast<int>(dx);
+                info.new_height += static_cast<int>(dy);
 
-        if (info.mouse_moved) {
-            if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
-                brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
-                info.should_draw = true;
-                info.should_empty = false;
+                std::println("rel motion {} {}, index {}", dx, dy, info.resize_button_index);
             }
-
-            if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
+            if (info.resizing && im->mouse_released(mouse_button::LEFT)) {
+                temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA8);
+                glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+                const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
+                if (status != GL_FRAMEBUFFER_COMPLETE) {
+                    std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+                }
+                info.resizing = false;
+                info.resized = true;
+            }
+        } 
+        else {
+            // brush stroke related stuff here
+            // only add brush strokes and do drawing if not in resize mode
+            if (im->mouse_released(mouse_button::LEFT) && inside_canvas && !info.mouse_moved) {
                 brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
                 info.should_draw = true;
                 info.should_empty = true;
+                return;
+            }
+
+            // TODO: Fix this shit. This code is about holding mouse while drawing
+            // and going outside of canvas stuff.
+            if ((info.prev_mouse_moved || info.mouse_moved) && !inside_canvas) {
+                if (brush_points.size() >= 2) {
+                    const auto idx {brush_points.size() - 1};
+                    auto dir_x {brush_points[idx].p.x - brush_points[idx-1].p.x};
+                    auto dir_y {brush_points[idx].p.y - brush_points[idx-1].p.y};
+                    const auto len {std::sqrtf(dir_x*dir_x + dir_y*dir_y)};
+                    dir_x /= len;
+                    dir_y /= len;
+                    const auto m {std::max(canvas.width, canvas.height)};
+                    brush_points.emplace_back(brush_point{{brush_points[idx].p.x+dir_x*m, brush_points[idx].p.y+dir_y*m}, info.brush_size*0.5f});
+                }
+
+                info.should_draw = true;
+                info.should_empty = true;
+                return;
+            }
+
+            if (info.mouse_moved) {
+                if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
+                    brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
+                    info.should_draw = true;
+                    info.should_empty = false;
+                }
+
+                if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
+                    brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
+                    info.should_draw = true;
+                    info.should_empty = true;
+                }
             }
         }
     }
@@ -583,9 +612,38 @@ void application::draw()
 
         const auto w {std::min(temp_canvas.width, canvas.width)};
         const auto h {std::min(temp_canvas.height, canvas.height)};
-        glCopyImageSubData(canvas.texture.id, GL_TEXTURE_2D , 0, 0, 0, 0,
-                           temp_canvas.texture.id, GL_TEXTURE_2D, 0, 0, 0, 0, 
+
+        int dst_x {};
+        int dst_y {};
+        int src_x {};
+        int src_y {};
+        int dw {info.new_width-canvas.width};
+        int dh {info.new_height-canvas.height};
+        switch (info.resize_button_index) {
+            case 0:
+                if (dw > 0) dst_x = dw;
+                else        src_x = -dw;
+                if (dh > 0) dst_y = dh;
+                else        src_y = -dh;
+                break;
+            case 1: 
+            case 2:
+                if (dw > 0) dst_x = dw;
+                else        src_x = -dw;
+                break;
+            case 6: 
+            case 7:
+                if (dh > 0) dst_y = dh;
+                else        src_y = -dh;
+                break;
+            default:
+                break;
+        }
+
+        glCopyImageSubData(canvas.texture.id, GL_TEXTURE_2D , 0, src_x, src_y, 0,
+                           temp_canvas.texture.id, GL_TEXTURE_2D, 0, dst_x, dst_y, 0, 
                            w, h, 1);
+
         std::println("ids {} {}", canvas.buffer.id, temp_canvas.buffer.id);
 
         std::swap(temp_canvas.buffer.id, canvas.buffer.id);
@@ -595,6 +653,7 @@ void application::draw()
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
 
         info.resized = false;
+        info.resize_button_index = -1;
     }
 
     // Only draw if we are doing brush strokes.
@@ -759,11 +818,8 @@ void application::draw()
         if (info.in_resize_mode) {
             // line shader is basically colored quad shader, RENAME later
             line_shader.use_shader();
-            std::array<veci2, 8> dirs {{
-                {-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}
-            }};
             constexpr int resize_button_len {15};
-            for (const auto& [dx, dy]:dirs) {
+            for (const auto& [dx, dy]:resize_dirs) {
                 math::mat4f quad_model {math::translate(world_pos.x+(0.5f*cw*zoom_scale*dx), world_pos.y+(0.5f*ch*zoom_scale*dy), 0.0f)*
                                         math::scale(zoom_scale*resize_button_len, zoom_scale*resize_button_len, 1.0f)};
                 line_shader.set_mat4("u_mvp", window_projection*quad_model);

@@ -174,7 +174,7 @@ void write_to_png(const gl::texture2d& texture, int width, int height) noexcept
     std::vector<u8> data(static_cast<std::size_t>(width*height*4), 0);
     glGetTextureImage(texture.id, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.size()*sizeof(u8), &data[0]);
     stbi_flip_vertically_on_write(1);
-    stbi_write_png("kek.png", width, height, 4, data.data(), width*4*sizeof(u8));
+    stbi_write_png("./test/kek.png", width, height, 4, data.data(), width*4*sizeof(u8));
 }
 
 }
