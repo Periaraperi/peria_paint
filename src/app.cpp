@@ -836,7 +836,7 @@ void application::draw()
         }
 
 
-        // TODO: reimplement this in a better way.
+        // TODO: reimplement this in a better way. Doesn't work anymore
         if (info.resizing) {
             model = math::translate(world_pos.x, world_pos.y, 0.0f)*
                     math::scale(zoom_scale*static_cast<float>(info.new_width), zoom_scale*static_cast<float>(info.new_height), 1.0f);

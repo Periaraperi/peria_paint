@@ -29,7 +29,6 @@ vertex_array& vertex_array::operator=(vertex_array&& rhs) noexcept
 {
     std::println("vertex_array move operator=()");
     if (&rhs == this) return *this;
-
     std::swap(id, rhs.id);
     return *this;
 }
@@ -51,7 +50,6 @@ named_buffer& named_buffer::operator=(named_buffer&& rhs) noexcept
 {
     std::println("named_buffer move operator=()");
     if (&rhs == this) return *this;
-
     std::swap(id, rhs.id);
     return *this;
 }
@@ -80,7 +78,6 @@ texture2d& texture2d::operator=(texture2d&& rhs) noexcept
 {
     std::println("texture2d move operator=()");
     if (&rhs == this) return *this;
-
     std::swap(id, rhs.id);
     return *this;
 }
