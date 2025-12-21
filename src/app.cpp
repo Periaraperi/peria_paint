@@ -5,6 +5,10 @@
 #include <cmath>
 #include <glad/glad.h>
 
+#include <imgui.h>
+#include <imgui_impl_sdl3.h>
+#include <imgui_impl_opengl3.h>
+
 #include <print>
 #include <utility>
 
@@ -144,9 +148,37 @@ sdl_initializer::~sdl_initializer()
 
 } // end sdl
 
+namespace imgui {
+
+// SDL3 is already initialized together with window, glContext and glad
+imgui::imgui(SDL_Window* window, SDL_GLContext gl_context, const char* glsl_version) noexcept
+{
+    std::println("imgui init");
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplSDL3_InitForOpenGL(window, gl_context);
+    ImGui_ImplOpenGL3_Init(glsl_version);
+
+}
+
+imgui::~imgui()
+{
+    std::println("imgui shutdown");
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImGui::DestroyContext();
+}
+
+} // end imgui
+
 application::application(application_settings&& settings)
     :app_settings_{std::move(settings)},
      sdl_initializer_{app_settings_},
+     imgui_{sdl_initializer_.window, sdl_initializer_.context, "#version 460"},
      circle_shader{"./assets/shaders/circle.vert", "./assets/shaders/circle.frag"},
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      line_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"},
@@ -291,6 +323,7 @@ bool application::initialized() const noexcept
 void application::run()
 {
     bool running {true};
+    bool show_demo {true};
 
     auto input_manager_ {input_manager::instance()};
 
@@ -314,6 +347,8 @@ void application::run()
 
         // Poll for events, and react to window resize and mouse movement events here
         for (SDL_Event ev; SDL_PollEvent(&ev);) {
+            ImGui_ImplSDL3_ProcessEvent(&ev);
+
             if (ev.type == SDL_EVENT_QUIT) {
                 running = false;
                 break;
@@ -355,6 +390,36 @@ void application::run()
             update(dt);
             draw();
         }
+
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+
+        if (show_demo) 
+            ImGui::ShowDemoWindow(&show_demo);
+        {
+            static float f = 0.0f;
+            static int counter = 0;
+
+            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+
+            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+            ImGui::Checkbox("Demo Window", &show_demo);      // Edit bools storing our window open/close state
+
+            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+
+            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+                counter++;
+            ImGui::SameLine();
+            ImGui::Text("counter = %d", counter);
+
+            //ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+            ImGui::End();
+        }
+            
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         SDL_GL_SwapWindow(sdl_initializer_.window);
         info.prev_mouse_moved = info.mouse_moved;

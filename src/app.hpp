@@ -51,6 +51,22 @@ struct sdl_initializer {
 
 };
 
+namespace imgui {
+
+struct imgui {
+    imgui(SDL_Window* window, SDL_GLContext gl_context, const char* glsl_version) noexcept;
+
+    imgui(const imgui&) = delete;
+    imgui& operator=(const imgui&) = delete;
+
+    imgui(imgui&&) noexcept = default;
+    imgui& operator=(imgui&&) noexcept = default;
+
+    ~imgui();
+};
+
+}
+
 class application {
 public:
     explicit application(application_settings&& settings);
@@ -68,6 +84,7 @@ public:
 private:
     application_settings app_settings_;
     sdl::sdl_initializer sdl_initializer_;
+    imgui::imgui imgui_;
 
     void update(float dt);
     void test_update(float dt);

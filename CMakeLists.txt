@@ -8,6 +8,18 @@ project(${PROJECT_NAME})
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(EXTERNAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
 
+set(EXTERNAL_SRCS
+    ${EXTERNAL_DIR}/glad/src/glad.c
+
+    ${EXTERNAL_DIR}/imgui/src/imgui.cpp
+    ${EXTERNAL_DIR}/imgui/src/imgui_demo.cpp
+    ${EXTERNAL_DIR}/imgui/src/imgui_draw.cpp
+    ${EXTERNAL_DIR}/imgui/src/imgui_impl_opengl3.cpp
+    ${EXTERNAL_DIR}/imgui/src/imgui_impl_sdl3.cpp
+    ${EXTERNAL_DIR}/imgui/src/imgui_tables.cpp
+    ${EXTERNAL_DIR}/imgui/src/imgui_widgets.cpp
+)
+
 set(SRCS 
     main.cpp
     ${SRC_DIR}/app.cpp
@@ -16,8 +28,8 @@ set(SRCS
     ${SRC_DIR}/graphics/shader.cpp
     ${SRC_DIR}/graphics/graphics.cpp
     ${SRC_DIR}/math/matrix.cpp
-
-    ${EXTERNAL_DIR}/glad/src/glad.c
+    
+    ${EXTERNAL_SRCS}
 )
 
 if (UNIX)
@@ -32,6 +44,7 @@ if (UNIX)
     target_include_directories(${PROJECT_NAME} PRIVATE
         ${SRC_DIR}
         ${EXTERNAL_DIR}/glad/include
+        ${EXTERNAL_DIR}/imgui/include
         ${EXTERNAL_DIR}/stb_image/
         ${SDL3_INCLUDE_DIRS}
     )
