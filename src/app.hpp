@@ -54,6 +54,7 @@ struct sdl_initializer {
 namespace imgui {
 
 struct imgui {
+    imgui() noexcept = default;
     imgui(SDL_Window* window, SDL_GLContext gl_context, const char* glsl_version) noexcept;
 
     imgui(const imgui&) = delete;
@@ -63,6 +64,9 @@ struct imgui {
     imgui& operator=(imgui&&) noexcept = default;
 
     ~imgui();
+
+    bool select_brush_color {};
+    std::array<float, 3> brush_color {};
 };
 
 }
@@ -148,6 +152,7 @@ private:
         int new_height {};
         bool in_resize_mode {false};
         int resize_button_index {-1};
+        vec3 brush_color {};
     } info;
 
     std::array<veci2, 8> resize_dirs {{

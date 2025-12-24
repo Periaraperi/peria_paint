@@ -206,15 +206,15 @@ application::application(application_settings&& settings)
     {
         std::array<u32, 6> indices {0,1,2, 0,2,3};
 
-        std::array<gl::vertex<gl::pos2, gl::pos2, gl::color4, gl::attr<float, 1>>, 4> circle_data {{
-            {{-0.5f, -0.5f}, {0, 0}, {0.0f, 0.0f, 0.0f, 1.0f}, {0}},
-            {{-0.5f,  0.5f}, {0, 0}, {0.0f, 0.0f, 0.0f, 1.0f}, {0}},
-            {{ 0.5f,  0.5f}, {0, 0}, {0.0f, 0.0f, 0.0f, 1.0f}, {0}},
-            {{ 0.5f, -0.5f}, {0, 0}, {0.0f, 0.0f, 0.0f, 1.0f}, {0}},
+        std::array<gl::vertex<gl::pos2>, 4> circle_data {{
+            {{-0.5f, -0.5f}},
+            {{-0.5f,  0.5f}},
+            {{ 0.5f,  0.5f}},
+            {{ 0.5f, -0.5f}}
         }};
         graphics::buffer_upload_data(circle_vbo, circle_data, GL_STATIC_DRAW);
         graphics::buffer_upload_data(quad_ibo, indices, GL_STATIC_DRAW);
-        graphics::vao_configure<gl::pos2, gl::pos2, gl::color4, gl::attr<float, 1>>(circle_vao, circle_vbo, 0);
+        graphics::vao_configure<gl::pos2>(circle_vao, circle_vbo, 0);
         graphics::vao_connect_ibo(circle_vao, quad_ibo);
 
         std::array<gl::vertex<gl::pos2, gl::texture_coord>, 4> canvas_data {{
@@ -323,8 +323,7 @@ bool application::initialized() const noexcept
 void application::run()
 {
     bool running {true};
-    bool show_demo {true};
-
+    // TODO: some test things for imgui. REFACTOR LATER
     auto input_manager_ {input_manager::instance()};
 
     std::chrono::steady_clock clock {};
@@ -381,42 +380,58 @@ void application::run()
                 info.world_offset += (mouse_world_after_zoom - mouse_world);
             }
         }
-        
-        if (TESTING) {
-            test_update(dt);
-            test_draw();
-        }
-        else {
-            update(dt);
-            draw();
-        }
-
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
-        if (show_demo) 
-            ImGui::ShowDemoWindow(&show_demo);
-        {
-            static float f = 0.0f;
-            static int counter = 0;
-
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
-            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-            ImGui::Checkbox("Demo Window", &show_demo);      // Edit bools storing our window open/close state
-
-            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-
-            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-                counter++;
-            ImGui::SameLine();
-            ImGui::Text("counter = %d", counter);
-
-            //ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-            ImGui::End();
+        bool imgui_wants {ImGui::GetIO().WantCaptureMouse || ImGui::GetIO().WantCaptureKeyboard};
+        
+        if (!imgui_wants) {
+            if (TESTING) {
+                test_update(dt);
+            }
+            else {
+                update(dt);
+            }
         }
+        if (TESTING) {
+            test_draw();
+        }
+        else {
+            draw();
+        }
+
+        ImGui::BeginMainMenuBar();
+            if (ImGui::Button("select_brush_color")) {
+                imgui_.select_brush_color = true;
+            }
+        ImGui::EndMainMenuBar();
+        if (imgui_.select_brush_color) {
+            ImGui::ColorPicker3("brush_color", imgui_.brush_color.data());
+        }
+
+        //if (show_demo) 
+        //    ImGui::ShowDemoWindow(&show_demo);
+        //{
+        //    static float f = 0.0f;
+        //    static int counter = 0;
+
+        //    ImGui::Begin("Hello, world!", p_open, im_window_flags);                          // Create a window called "Hello, world!" and append into it.
+
+        //    ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+        //    ImGui::Checkbox("Demo Window", &show_demo);      // Edit bools storing our window open/close state
+
+        //    ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+
+        //    if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+        //        counter++;
+        //    ImGui::SameLine();
+        //    ImGui::Text("counter = %d", counter);
+
+        //    //ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+        //    ImGui::End();
+        //}
             
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -425,13 +440,15 @@ void application::run()
         info.prev_mouse_moved = info.mouse_moved;
         info.mouse_moved = false;
         
-        std::string title {"peria_paint | "+std::to_string(elapsed_time)+" "+std::to_string(dt)};
-        if (graphics::is_vsync()) title += " VSYNC: ON";
-        else title += " VSYNC: OFF";
+        {
+            std::string title {"peria_paint | "+std::to_string(elapsed_time)+" "+std::to_string(dt)};
+            if (graphics::is_vsync()) title += " VSYNC: ON";
+            else title += " VSYNC: OFF";
 
-        SDL_SetWindowTitle(sdl_initializer_.window, title.c_str());
+            SDL_SetWindowTitle(sdl_initializer_.window, title.c_str());
+        }
 
-        input_manager_->update_prev_state();
+        if (!imgui_wants) input_manager_->update_prev_state();
     }
 }
 
@@ -737,7 +754,10 @@ void application::draw()
         graphics::bind_vertex_array(circle_vao);
         circle_shader.use_shader();
 
-        circle_shader.set_vec4("u_color", graphics::color{0,0,0,1});
+        {
+            const auto& [r, g, b] {imgui_.brush_color};
+            circle_shader.set_vec4("u_color", vec4{r, g, b, 1.0f});
+        }
 
         // Draw brush stroke points
         for (std::size_t i{}; i<brush_points.size(); ++i) {
@@ -797,10 +817,11 @@ void application::draw()
             const float lower_right_x {x2 - t2*dir_x_90};
             const float lower_right_y {y2 - t2*dir_y_90};
 
-            line_batcher.lines_data.push_back({{lower_left_x,  lower_left_y }, {0.0f, 0.0f, 0.0f, 1}});
-            line_batcher.lines_data.push_back({{upper_left_x,  upper_left_y }, {0.0f, 0.0f, 0.0f, 1}});
-            line_batcher.lines_data.push_back({{upper_right_x, upper_right_y}, {0.0f, 0.0f, 0.0f, 1}});
-            line_batcher.lines_data.push_back({{lower_right_x, lower_right_y}, {0.0f, 0.0f, 0.0f, 1}});
+            const auto& [r, g, b] {imgui_.brush_color};
+            line_batcher.lines_data.push_back({{lower_left_x,  lower_left_y }, {r, g, b, 1.0f}});
+            line_batcher.lines_data.push_back({{upper_left_x,  upper_left_y }, {r, g, b, 1.0f}});
+            line_batcher.lines_data.push_back({{upper_right_x, upper_right_y}, {r, g, b, 1.0f}});
+            line_batcher.lines_data.push_back({{lower_right_x, lower_right_y}, {r, g, b, 1.0f}});
         };
 
         for (std::size_t i{1}; i<samples.size(); ++i) {
@@ -831,10 +852,11 @@ void application::draw()
             const float lower_right_x {x2 - t2*dir_x_90};
             const float lower_right_y {y2 - t2*dir_y_90};
 
-            line_batcher.lines_data.push_back({{lower_left_x,  lower_left_y }, {0.0f, 0.0f, 0.0f, 1}});
-            line_batcher.lines_data.push_back({{upper_left_x,  upper_left_y }, {0.0f, 0.0f, 0.0f, 1}});
-            line_batcher.lines_data.push_back({{upper_right_x, upper_right_y}, {0.0f, 0.0f, 0.0f, 1}});
-            line_batcher.lines_data.push_back({{lower_right_x, lower_right_y}, {0.0f, 0.0f, 0.0f, 1}});
+            const auto& [r, g, b] {imgui_.brush_color};
+            line_batcher.lines_data.push_back({{lower_left_x,  lower_left_y }, {r, g, b, 1.0f}});
+            line_batcher.lines_data.push_back({{upper_left_x,  upper_left_y }, {r, g, b, 1.0f}});
+            line_batcher.lines_data.push_back({{upper_right_x, upper_right_y}, {r, g, b, 1.0f}});
+            line_batcher.lines_data.push_back({{lower_right_x, lower_right_y}, {r, g, b, 1.0f}});
         }
         if (brush_points.size() >= 2 && samples.size() >= 2) {
             add_line({{brush_points[0].p.x, brush_points[0].p.y}, brush_points[0].r}, samples[0]);
@@ -886,7 +908,6 @@ void application::draw()
         textured_quad_shader.set_float("u_temp_toggle", 1.0f);
         graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-
         
         if (info.in_resize_mode) {
             // line shader is basically colored quad shader, RENAME later
@@ -899,7 +920,6 @@ void application::draw()
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
             }
         }
-
 
         // TODO: reimplement this in a better way. Doesn't work anymore
         if (info.resizing) {

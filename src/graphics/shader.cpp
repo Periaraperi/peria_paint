@@ -114,6 +114,15 @@ void shader::set_vec2(const char* u_name, float x, float y) const noexcept
 void shader::set_vec4(const char* u_name, const graphics::color& v) const noexcept
 { glProgramUniform4f(id, glGetUniformLocation(id, u_name), v.r, v.g, v.b, v.a); }
 
+void shader::set_vec2(const char* u_name, const vec2& v) const noexcept
+{ glProgramUniform2f(id, glGetUniformLocation(id, u_name), v.x, v.y); }
+
+void shader::set_vec3(const char* u_name, const vec3& v) const noexcept
+{ glProgramUniform3f(id, glGetUniformLocation(id, u_name), v.x, v.y, v.z); }
+
+void shader::set_vec4(const char* u_name, const vec4& v) const noexcept
+{ glProgramUniform4f(id, glGetUniformLocation(id, u_name), v.x, v.y, v.z, v.w); }
+
 void shader::set_mat4(const char* u_name, const math::mat4f& m, bool let_gl_transpose) const noexcept
 { glProgramUniformMatrix4fv(id, glGetUniformLocation(id, u_name), 1, let_gl_transpose, m.data()); }
 

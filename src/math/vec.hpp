@@ -361,8 +361,8 @@ struct vec4 {
 
     T x {};
     T y {};
-    T w {};
     T z {};
+    T w {};
 };
 
 }
