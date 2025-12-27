@@ -65,8 +65,8 @@ struct imgui {
 
     ~imgui();
 
-    bool select_brush_color {};
-    std::array<float, 3> brush_color {};
+    [[nodiscard]]
+    bool is_imgui_captured() noexcept;
 };
 
 }
@@ -137,13 +137,18 @@ private:
         int height {};
     } temp_canvas;
 
+    struct pen_tool {
+        std::vector<brush_point> brush_points; // for brush stroke
+        std::array<float, 3> brush_color {};
+        float brush_size {10.0f};
+    } pen_;
+
     struct info {
         vec2 world_offset {};
         bool mouse_moved {};
         bool prev_mouse_moved {};
         float pan_speed {50.0f};
         float resize_speed {100.0f};
-        float brush_size {10.0f};
         bool should_draw {false};
         bool should_empty {false};
         bool resized {true};
@@ -152,13 +157,11 @@ private:
         int new_height {};
         bool in_resize_mode {false};
         int resize_button_index {-1};
-        vec3 brush_color {};
     } info;
 
     std::array<veci2, 8> resize_dirs {{
         {-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}
     }};
-    std::vector<brush_point> brush_points; // for brush stroke
 
     static constexpr int MAX_PER_BATCH {4096}; // count
 

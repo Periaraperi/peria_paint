@@ -158,11 +158,10 @@ imgui::imgui(SDL_Window* window, SDL_GLContext gl_context, const char* glsl_vers
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     ImGui::StyleColorsDark();
-
     ImGui_ImplSDL3_InitForOpenGL(window, gl_context);
     ImGui_ImplOpenGL3_Init(glsl_version);
-
 }
 
 imgui::~imgui()
@@ -173,6 +172,9 @@ imgui::~imgui()
     ImGui::DestroyContext();
 }
 
+bool imgui::is_imgui_captured() noexcept
+{ return ImGui::GetIO().WantCaptureMouse || ImGui::GetIO().WantCaptureKeyboard; }
+
 } // end imgui
 
 application::application(application_settings&& settings)
@@ -182,10 +184,10 @@ application::application(application_settings&& settings)
      circle_shader{"./assets/shaders/circle.vert", "./assets/shaders/circle.frag"},
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      line_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"},
-     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA8)},
+     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA16F)},
             gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
             static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, graphics::WHITE},
-     temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA8)}}, {}, canvas.width, canvas.height}
+     temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA16F)}}, {}, canvas.width, canvas.height}
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
@@ -297,12 +299,12 @@ application::application(application_settings&& settings)
         info.new_height = canvas.height;
     }
 
-    brush_points.reserve(2048);
+    pen_.brush_points.reserve(2048);
     // times 4 because each line is represented as a quad which is 2 triangles with total of 4 verts
     line_batcher.lines_data.reserve(MAX_PER_BATCH*4);
 
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
     // just clear canvas to default color before doing anything
     graphics::bind_frame_buffer(canvas.buffer);
@@ -384,10 +386,10 @@ void application::run()
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
+        ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 
-        bool imgui_wants {ImGui::GetIO().WantCaptureMouse || ImGui::GetIO().WantCaptureKeyboard};
         
-        if (!imgui_wants) {
+        if (!imgui_.is_imgui_captured()) {
             if (TESTING) {
                 test_update(dt);
             }
@@ -403,35 +405,15 @@ void application::run()
         }
 
         ImGui::BeginMainMenuBar();
-            if (ImGui::Button("select_brush_color")) {
-                imgui_.select_brush_color = true;
+            if (ImGui::Button("save")) {
+
             }
         ImGui::EndMainMenuBar();
-        if (imgui_.select_brush_color) {
-            ImGui::ColorPicker3("brush_color", imgui_.brush_color.data());
-        }
 
-        //if (show_demo) 
-        //    ImGui::ShowDemoWindow(&show_demo);
-        //{
-        //    static float f = 0.0f;
-        //    static int counter = 0;
-
-        //    ImGui::Begin("Hello, world!", p_open, im_window_flags);                          // Create a window called "Hello, world!" and append into it.
-
-        //    ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-        //    ImGui::Checkbox("Demo Window", &show_demo);      // Edit bools storing our window open/close state
-
-        //    ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-
-        //    if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-        //        counter++;
-        //    ImGui::SameLine();
-        //    ImGui::Text("counter = %d", counter);
-
-        //    //ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-        //    ImGui::End();
-        //}
+        ImGui::Begin("tools");
+            ImGui::ColorPicker3("pen_brush_color", pen_.brush_color.data());
+            ImGui::SliderFloat("pen_brush_size", &pen_.brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f);
+        ImGui::End();
             
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -448,7 +430,7 @@ void application::run()
             SDL_SetWindowTitle(sdl_initializer_.window, title.c_str());
         }
 
-        if (!imgui_wants) input_manager_->update_prev_state();
+        if (!imgui_.is_imgui_captured()) input_manager_->update_prev_state();
     }
 }
 
@@ -459,12 +441,12 @@ void application::update(float dt)
     info.should_draw = false;
 
     if (im->key_down(SDL_SCANCODE_W)) {
-        info.brush_size += 10.0f*dt;
-        info.brush_size = std::min(info.brush_size, 150.0f);
+        pen_.brush_size += 10.0f*dt;
+        pen_.brush_size = std::min(pen_.brush_size, 150.0f);
     }
     if (im->key_down(SDL_SCANCODE_E)) {
-        info.brush_size -= 10.0f*dt;
-        info.brush_size = std::max(info.brush_size, 2.0f);
+        pen_.brush_size -= 10.0f*dt;
+        pen_.brush_size = std::max(pen_.brush_size, 2.0f);
     }
 
     if (im->key_pressed(SDL_SCANCODE_S)) {
@@ -607,7 +589,7 @@ void application::update(float dt)
                 std::println("rel motion {} {}, index {}", dx, dy, info.resize_button_index);
             }
             if (info.resizing && im->mouse_released(mouse_button::LEFT)) {
-                temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA8);
+                temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA16F);
                 glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
                 const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
                 if (status != GL_FRAMEBUFFER_COMPLETE) {
@@ -621,7 +603,7 @@ void application::update(float dt)
             // brush stroke related stuff here
             // only add brush strokes and do drawing if not in resize mode
             if (im->mouse_released(mouse_button::LEFT) && inside_canvas && !info.mouse_moved) {
-                brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
+                pen_.brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, pen_.brush_size*0.5f});
                 info.should_draw = true;
                 info.should_empty = true;
                 return;
@@ -630,15 +612,15 @@ void application::update(float dt)
             // TODO: Fix this shit. This code is about holding mouse while drawing
             // and going outside of canvas stuff.
             if ((info.prev_mouse_moved || info.mouse_moved) && !inside_canvas) {
-                if (brush_points.size() >= 2) {
-                    const auto idx {brush_points.size() - 1};
-                    auto dir_x {brush_points[idx].p.x - brush_points[idx-1].p.x};
-                    auto dir_y {brush_points[idx].p.y - brush_points[idx-1].p.y};
+                if (pen_.brush_points.size() >= 2) {
+                    const auto idx {pen_.brush_points.size() - 1};
+                    auto dir_x {pen_.brush_points[idx].p.x - pen_.brush_points[idx-1].p.x};
+                    auto dir_y {pen_.brush_points[idx].p.y - pen_.brush_points[idx-1].p.y};
                     const auto len {std::sqrtf(dir_x*dir_x + dir_y*dir_y)};
                     dir_x /= len;
                     dir_y /= len;
                     const auto m {std::max(canvas.width, canvas.height)};
-                    brush_points.emplace_back(brush_point{{brush_points[idx].p.x+dir_x*m, brush_points[idx].p.y+dir_y*m}, info.brush_size*0.5f});
+                    pen_.brush_points.emplace_back(brush_point{{pen_.brush_points[idx].p.x+dir_x*m, pen_.brush_points[idx].p.y+dir_y*m}, pen_.brush_size*0.5f});
                 }
 
                 info.should_draw = true;
@@ -648,13 +630,13 @@ void application::update(float dt)
 
             if (info.mouse_moved) {
                 if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
-                    brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
+                    pen_.brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, pen_.brush_size*0.5f});
                     info.should_draw = true;
                     info.should_empty = false;
                 }
 
                 if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
-                    brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, info.brush_size*0.5f});
+                    pen_.brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, pen_.brush_size*0.5f});
                     info.should_draw = true;
                     info.should_empty = true;
                 }
@@ -669,17 +651,6 @@ void application::test_update([[maybe_unused]] float dt)
 
 void application::draw()
 {
-    auto pr = [this](const char* s) {
-        std::println("{}", s);
-        std::println("CANVAS");
-        std::println("bufId: {}\ntexId: {}\nW {}\nH {}", canvas.buffer.id, 
-                canvas.texture.id, canvas.width, canvas.height);
-        std::println("TEMP CANVAS");
-        std::println("bufId: {}\ntexId: {}\nW {}\nH {}", temp_canvas.buffer.id, 
-                temp_canvas.texture.id, temp_canvas.width, temp_canvas.height);
-    };
-
-
     // Clear resized buffer and copy all contents from old to new.
     // Then swap struct info as well.
     if (info.resized) {
@@ -734,7 +705,7 @@ void application::draw()
                            temp_canvas.texture.id, GL_TEXTURE_2D, 0, dst_x, dst_y, 0, 
                            w, h, 1);
 
-        std::println("ids {} {}", canvas.buffer.id, temp_canvas.buffer.id);
+        //std::println("ids {} {}", canvas.buffer.id, temp_canvas.buffer.id);
 
         std::swap(temp_canvas.buffer.id, canvas.buffer.id);
         std::swap(temp_canvas.texture.id, canvas.texture.id);
@@ -755,13 +726,13 @@ void application::draw()
         circle_shader.use_shader();
 
         {
-            const auto& [r, g, b] {imgui_.brush_color};
+            const auto& [r, g, b] {pen_.brush_color};
             circle_shader.set_vec4("u_color", vec4{r, g, b, 1.0f});
         }
 
         // Draw brush stroke points
-        for (std::size_t i{}; i<brush_points.size(); ++i) {
-            const auto& [pos, r] {brush_points[i]};
+        for (std::size_t i{}; i<pen_.brush_points.size(); ++i) {
+            const auto& [pos, r] {pen_.brush_points[i]};
             math::mat4f m {math::translate(pos.x, pos.y, 0.0f)*
                            math::scale(2*r, 2*r, 1.0f)};
             circle_shader.set_mat4("u_mvp", canvas.projection*m);
@@ -771,8 +742,8 @@ void application::draw()
         }
 
         std::vector<brush_point> samples;
-        for (float t{}; t<static_cast<float>(brush_points.size())-3.0f; t+=0.2f) {
-            samples.emplace_back(get_point_on_path(brush_points, t));
+        for (float t{}; t<static_cast<float>(pen_.brush_points.size())-3.0f; t+=0.2f) {
+            samples.emplace_back(get_point_on_path(pen_.brush_points, t));
         }
 
         // Draw interpolated sample points on stroke points
@@ -817,7 +788,7 @@ void application::draw()
             const float lower_right_x {x2 - t2*dir_x_90};
             const float lower_right_y {y2 - t2*dir_y_90};
 
-            const auto& [r, g, b] {imgui_.brush_color};
+            const auto& [r, g, b] {pen_.brush_color};
             line_batcher.lines_data.push_back({{lower_left_x,  lower_left_y }, {r, g, b, 1.0f}});
             line_batcher.lines_data.push_back({{upper_left_x,  upper_left_y }, {r, g, b, 1.0f}});
             line_batcher.lines_data.push_back({{upper_right_x, upper_right_y}, {r, g, b, 1.0f}});
@@ -852,15 +823,15 @@ void application::draw()
             const float lower_right_x {x2 - t2*dir_x_90};
             const float lower_right_y {y2 - t2*dir_y_90};
 
-            const auto& [r, g, b] {imgui_.brush_color};
+            const auto& [r, g, b] {pen_.brush_color};
             line_batcher.lines_data.push_back({{lower_left_x,  lower_left_y }, {r, g, b, 1.0f}});
             line_batcher.lines_data.push_back({{upper_left_x,  upper_left_y }, {r, g, b, 1.0f}});
             line_batcher.lines_data.push_back({{upper_right_x, upper_right_y}, {r, g, b, 1.0f}});
             line_batcher.lines_data.push_back({{lower_right_x, lower_right_y}, {r, g, b, 1.0f}});
         }
-        if (brush_points.size() >= 2 && samples.size() >= 2) {
-            add_line({{brush_points[0].p.x, brush_points[0].p.y}, brush_points[0].r}, samples[0]);
-            add_line(samples.back(), {{brush_points.back().p.x, brush_points.back().p.y}, brush_points.back().r});
+        if (pen_.brush_points.size() >= 2 && samples.size() >= 2) {
+            add_line({{pen_.brush_points[0].p.x, pen_.brush_points[0].p.y}, pen_.brush_points[0].r}, samples[0]);
+            add_line(samples.back(), {{pen_.brush_points.back().p.x, pen_.brush_points.back().p.y}, pen_.brush_points.back().r});
         }
 
         graphics::bind_vertex_array(line_vao);
@@ -879,10 +850,10 @@ void application::draw()
             glDrawElements(GL_TRIANGLES, leftover*6, GL_UNSIGNED_INT, nullptr);
         }
         line_batcher.lines_data.clear();
-        if (brush_points.size() > 1024) brush_points.clear(); // INVESTIGATE THIS!!!!
+        if (pen_.brush_points.size() > 1024) pen_.brush_points.clear(); // INVESTIGATE THIS!!!!
 
         if (info.should_empty) {
-            brush_points.clear();
+            pen_.brush_points.clear();
         }
     }
 

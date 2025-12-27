@@ -10,8 +10,9 @@ void main()
 {
     vec2 p = gl_FragCoord.xy;
     p -= u_center_world;
-    float s = 1.0f - smoothstep(u_radius-1.0f, u_radius, length(p));
+    float s = smoothstep(u_radius, u_radius-1.0f, length(p));
     //float s = 1.0f - step(u_radius, length(p));
-    final_color = vec4(u_color.r, u_color.g, u_color.b, s);
+    //final_color = vec4(u_color.r, u_color.g, u_color.b, s);
+    final_color = vec4(u_color.rgb*s, s);
 }
 
