@@ -89,6 +89,38 @@ peria::brush_point get_point_on_path(const std::vector<peria::brush_point>& poin
     };
 }
 
+[[nodiscard]]
+std::vector<peria::gl::vertex<peria::gl::pos2, peria::gl::color4>> generic_add_line(const peria::line& line)
+{
+    const float vec_x {line.p2.x-line.p1.x};
+    const float vec_y {line.p2.y-line.p1.y};
+    const float len {std::sqrt(vec_x*vec_x+vec_y*vec_y)};
+    const float dir_x {vec_x/len};
+    const float dir_y {vec_y/len};
+    const float dir_x_90 {-dir_y};
+    const float dir_y_90 {dir_x};
+
+    const float lower_left_x {line.p1.x - line.thickness*dir_x_90};
+    const float lower_left_y {line.p1.y - line.thickness*dir_y_90};
+
+    const float upper_left_x {line.p1.x + line.thickness*dir_x_90};
+    const float upper_left_y {line.p1.y + line.thickness*dir_y_90};
+
+    const float upper_right_x {line.p2.x + line.thickness*dir_x_90};
+    const float upper_right_y {line.p2.y + line.thickness*dir_y_90};
+
+    const float lower_right_x {line.p2.x - line.thickness*dir_x_90};
+    const float lower_right_y {line.p2.y - line.thickness*dir_y_90};
+
+    const auto& [r, g, b] {line.color};
+    return {
+        {{lower_left_x,  lower_left_y }, {r, g, b, 1.0f}},
+        {{upper_left_x,  upper_left_y }, {r, g, b, 1.0f}},
+        {{upper_right_x, upper_right_y}, {r, g, b, 1.0f}},
+        {{lower_right_x, lower_right_y}, {r, g, b, 1.0f}}
+    };
+}
+
 }
 
 namespace peria {
@@ -174,6 +206,9 @@ imgui::~imgui()
 
 bool imgui::is_imgui_captured() noexcept
 { return ImGui::GetIO().WantCaptureMouse || ImGui::GetIO().WantCaptureKeyboard; }
+
+bool imgui::is_imgui_hovered() noexcept
+{ return ImGui::GetIO().MouseHoveredViewport; };
 
 } // end imgui
 
@@ -325,7 +360,6 @@ bool application::initialized() const noexcept
 void application::run()
 {
     bool running {true};
-    // TODO: some test things for imgui. REFACTOR LATER
     auto input_manager_ {input_manager::instance()};
 
     std::chrono::steady_clock clock {};
@@ -365,7 +399,7 @@ void application::run()
                 peria::graphics::set_relative_motion(ev.motion.xrel, -ev.motion.yrel);
                 info.mouse_moved = true;
             }
-            else if (ev.type == SDL_EVENT_MOUSE_WHEEL) {
+            else if (ev.type == SDL_EVENT_MOUSE_WHEEL && imgui_.update_canvas) {
                 const auto [mx, my] {input_manager_->get_mouse_gl()};
                 auto mouse_world {screen_to_world({mx, my}, info.world_offset)};
 
@@ -388,32 +422,40 @@ void application::run()
         ImGui::NewFrame();
         ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 
+        imgui_.update_canvas = !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow); 
         
-        if (!imgui_.is_imgui_captured()) {
-            if (TESTING) {
-                test_update(dt);
-            }
-            else {
-                update(dt);
-            }
-        }
-        if (TESTING) {
-            test_draw();
-        }
-        else {
-            draw();
-        }
+        update(dt);
+        draw();
 
-        ImGui::BeginMainMenuBar();
+        if (ImGui::BeginMainMenuBar()) {
             if (ImGui::Button("save")) {
-
+                graphics::write_to_png(canvas.texture, canvas.width, canvas.height);
             }
+            if (ImGui::Button("tools")) {
+                if (imgui_.show_tools) imgui_.show_tools = false;
+                else                   imgui_.show_tools = true;
+            }
+        }
         ImGui::EndMainMenuBar();
 
-        ImGui::Begin("tools");
-            ImGui::ColorPicker3("pen_brush_color", pen_.brush_color.data());
-            ImGui::SliderFloat("pen_brush_size", &pen_.brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f);
-        ImGui::End();
+        if (imgui_.show_tools) {
+            if (ImGui::Begin("tools")) {
+                ImGui::ColorPicker3("pen_brush_color", pen_.brush_color.data());
+                ImGui::SliderFloat("pen_brush_size", &pen_.brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f);
+                ImGui::SliderFloat("eraser_radius", &eraser_.r, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f);
+                if (ImGui::Button("reset")) {
+                    info.world_offset = {0, 0};
+                    zoom_scale = 1.0f;
+                }
+                if (ImGui::Checkbox("pen_brush", &imgui_.pen_selected)) {
+                    imgui_.eraser_selected = !imgui_.pen_selected;
+                }
+                if (ImGui::Checkbox("eraser", &imgui_.eraser_selected)) {
+                    imgui_.pen_selected = !imgui_.eraser_selected;
+                }
+            }
+            ImGui::End();
+        }
             
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -430,7 +472,7 @@ void application::run()
             SDL_SetWindowTitle(sdl_initializer_.window, title.c_str());
         }
 
-        if (!imgui_.is_imgui_captured()) input_manager_->update_prev_state();
+        input_manager_->update_prev_state();
     }
 }
 
@@ -440,16 +482,7 @@ void application::update(float dt)
     const auto [mx, my] {im->get_mouse_gl()};
     info.should_draw = false;
 
-    if (im->key_down(SDL_SCANCODE_W)) {
-        pen_.brush_size += 10.0f*dt;
-        pen_.brush_size = std::min(pen_.brush_size, 150.0f);
-    }
-    if (im->key_down(SDL_SCANCODE_E)) {
-        pen_.brush_size -= 10.0f*dt;
-        pen_.brush_size = std::max(pen_.brush_size, 2.0f);
-    }
-
-    if (im->key_pressed(SDL_SCANCODE_S)) {
+    if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_S)) {
         graphics::write_to_png(canvas.texture, canvas.width, canvas.height);
     }
 
@@ -457,67 +490,30 @@ void application::update(float dt)
         graphics::set_vsync(!graphics::is_vsync());
     }
 
+    if (im->key_pressed(SDL_SCANCODE_T)) {
+        if (imgui_.show_tools) imgui_.show_tools = false;
+        else                   imgui_.show_tools = true;
+    }
+
+    if (im->key_pressed(SDL_SCANCODE_B)) {
+        imgui_.pen_selected = true;
+        imgui_.eraser_selected = false;
+    }
+
+    if (im->key_pressed(SDL_SCANCODE_E)) {
+        imgui_.eraser_selected = true;
+        imgui_.pen_selected = false;
+    }
+
     if (im->key_pressed(SDL_SCANCODE_R)) {
         if (info.in_resize_mode) info.in_resize_mode = false;
         else                     info.in_resize_mode = true;
     }
 
-    // loading image and putting it onto canvas
-    // TODO: FIX ME PLEASE!!
-    //if (im->key_pressed(SDL_SCANCODE_L)) {
-    //    std::int32_t w, h, c;
-    //    canvas.texture = graphics::create_texture2d_from_image("./test/ds1_tyvnasha.png", w, h, c);
-    //    canvas.width = w;
-    //    canvas.height = h;
-
-    //    glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
-    //    auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
-    //    if (status != GL_FRAMEBUFFER_COMPLETE) {
-    //        std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
-    //    }
-
-    //    temp_canvas.texture = graphics::create_texture2d_from_image("./test/ds1_tyvnasha.png", w, h, c);
-    //    temp_canvas.width = w;
-    //    temp_canvas.height = h;
-
-    //    glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
-    //    status = glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER);
-    //    if (status != GL_FRAMEBUFFER_COMPLETE) {
-    //        std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
-    //    }
-    //    canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
-    //}
-
-    // resizing the old way
-    if (0) {
-        if (info.mouse_moved &&
-            im->mouse_down(mouse_button::MID) &&
-            im->key_down(SDL_SCANCODE_LSHIFT)) {
-            info.resizing = true;
-
-            const auto rel_motion {graphics::get_relative_motion()};
-            const auto dx {rel_motion.x};
-            const auto dy {rel_motion.y};
-
-            info.new_width  += static_cast<int>(dx);
-            info.new_height += static_cast<int>(dy);
-            return;
-        }
-
-        if (im->mouse_released(mouse_button::MID) && info.resizing) {
-            std::println("aba tu washlis es yle");
-            temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA8);
-            std::println("aba yle");
-
-            glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
-            const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
-            if (status != GL_FRAMEBUFFER_COMPLETE) {
-                std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
-            }
-            info.resizing = false;
-            info.resized = true;
-            return;
-        }
+    if (!imgui_.update_canvas) {
+        info.should_draw = true;
+        info.should_empty = true;
+        return;
     }
 
     // panning around
@@ -537,8 +533,6 @@ void application::update(float dt)
         const auto canvas_upper_right_y  {canvas_world_center_y+canvas.height*0.5f};
 
         const auto world_mpos {screen_to_world({mx, my}, info.world_offset)};
-        //std::println("world mpos {}, {}", world_mpos.x, world_mpos.y);
-        //std::println("screen mpos {}, {}", mx, my);
         bool inside_canvas {world_mpos.x >= canvas_lower_left_x &&
                             world_mpos.x <= canvas_upper_right_x &&
                             world_mpos.y >= canvas_lower_left_y &&
@@ -579,14 +573,20 @@ void application::update(float dt)
                 }
             }
             if (info.resizing && im->mouse_down(mouse_button::LEFT)) {
-                const auto rel_motion {graphics::get_relative_motion()};
-                const auto dx {rel_motion.x*(resize_dirs[info.resize_button_index].x)};
-                const auto dy {rel_motion.y*(resize_dirs[info.resize_button_index].y)};
+                // REMOVE ME LATER
+                //const auto rel_motion {graphics::get_relative_motion()};
+                //const auto dx {rel_motion.x*(resize_dirs[info.resize_button_index].x)};
+                //const auto dy {rel_motion.y*(resize_dirs[info.resize_button_index].y)};
+                //info.new_width  += static_cast<int>(dx);
+                //info.new_height += static_cast<int>(dy);
 
-                info.new_width  += static_cast<int>(dx);
-                info.new_height += static_cast<int>(dy);
+                const auto dx {world_mpos.x-(canvas.pos.x+resize_dirs[info.resize_button_index].x*canvas.width*0.5f)};
+                const auto dy {world_mpos.y-(canvas.pos.y+resize_dirs[info.resize_button_index].y*canvas.height*0.5f)};
 
-                std::println("rel motion {} {}, index {}", dx, dy, info.resize_button_index);
+                info.new_width  = static_cast<int>(canvas.width+dx*resize_dirs[info.resize_button_index].x);
+                info.new_height = static_cast<int>(canvas.height+dy*resize_dirs[info.resize_button_index].y);
+
+                //std::println("rel motion {} {}, index {}", dx, dy, info.resize_button_index);
             }
             if (info.resizing && im->mouse_released(mouse_button::LEFT)) {
                 temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA16F);
@@ -644,10 +644,6 @@ void application::update(float dt)
         }
     }
 }
-
-
-void application::test_update([[maybe_unused]] float dt)
-{}
 
 void application::draw()
 {
@@ -726,13 +722,20 @@ void application::draw()
         circle_shader.use_shader();
 
         {
-            const auto& [r, g, b] {pen_.brush_color};
+            auto [r, g, b] {pen_.brush_color};
+            if (imgui_.eraser_selected) {
+                r = canvas.bg_color.r;
+                g = canvas.bg_color.g;
+                b = canvas.bg_color.b;
+            }
             circle_shader.set_vec4("u_color", vec4{r, g, b, 1.0f});
         }
 
         // Draw brush stroke points
         for (std::size_t i{}; i<pen_.brush_points.size(); ++i) {
-            const auto& [pos, r] {pen_.brush_points[i]};
+            const auto& pos {pen_.brush_points[i].p};
+            auto r {pen_.brush_points[i].r};
+            if (imgui_.eraser_selected) r = eraser_.r;
             math::mat4f m {math::translate(pos.x, pos.y, 0.0f)*
                            math::scale(2*r, 2*r, 1.0f)};
             circle_shader.set_mat4("u_mvp", canvas.projection*m);
@@ -748,10 +751,12 @@ void application::draw()
 
         // Draw interpolated sample points on stroke points
         for (std::size_t i{}; i<samples.size(); ++i) {
+            auto r {samples[i].r};
+            if (imgui_.eraser_selected) r = eraser_.r;
             math::mat4f m {math::translate(samples[i].p.x, samples[i].p.y, 0.0f)*
-                           math::scale(samples[i].r*2, samples[i].r*2, 1.0f)};
+                           math::scale(r*2, r*2, 1.0f)};
             circle_shader.set_mat4("u_mvp", canvas.projection*m);
-            circle_shader.set_float("u_radius", samples[i].r);
+            circle_shader.set_float("u_radius", r);
             circle_shader.set_vec2("u_center_world", samples[i].p.x, samples[i].p.y);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
@@ -788,7 +793,12 @@ void application::draw()
             const float lower_right_x {x2 - t2*dir_x_90};
             const float lower_right_y {y2 - t2*dir_y_90};
 
-            const auto& [r, g, b] {pen_.brush_color};
+            auto [r, g, b] {pen_.brush_color};
+            if (imgui_.eraser_selected) {
+                r = canvas.bg_color.r;
+                g = canvas.bg_color.g;
+                b = canvas.bg_color.b;
+            }
             line_batcher.lines_data.push_back({{lower_left_x,  lower_left_y }, {r, g, b, 1.0f}});
             line_batcher.lines_data.push_back({{upper_left_x,  upper_left_y }, {r, g, b, 1.0f}});
             line_batcher.lines_data.push_back({{upper_right_x, upper_right_y}, {r, g, b, 1.0f}});
@@ -823,10 +833,15 @@ void application::draw()
             const float lower_right_x {x2 - t2*dir_x_90};
             const float lower_right_y {y2 - t2*dir_y_90};
 
-            const auto& [r, g, b] {pen_.brush_color};
+            auto [r, g, b] {pen_.brush_color};
+            if (imgui_.eraser_selected) {
+                r = canvas.bg_color.r;
+                g = canvas.bg_color.g;
+                b = canvas.bg_color.b;
+            }
             line_batcher.lines_data.push_back({{lower_left_x,  lower_left_y }, {r, g, b, 1.0f}});
             line_batcher.lines_data.push_back({{upper_left_x,  upper_left_y }, {r, g, b, 1.0f}});
-            line_batcher.lines_data.push_back({{upper_right_x, upper_right_y}, {r, g, b, 1.0f}});
+            line_batcher.lines_data.push_back({{upper_right_x, upper_right_y}, {r, g, b, 1.0f}}); 
             line_batcher.lines_data.push_back({{lower_right_x, lower_right_y}, {r, g, b, 1.0f}});
         }
         if (pen_.brush_points.size() >= 2 && samples.size() >= 2) {
@@ -855,6 +870,7 @@ void application::draw()
         if (info.should_empty) {
             pen_.brush_points.clear();
         }
+
     }
 
     // Last pass to render canvas on a quad and position it in the world based on world pos and world offset.
@@ -869,8 +885,8 @@ void application::draw()
         // I guess more appropriate name would be world to view??
         // In 2D panning and zooming is kinda different compared to 3D.
         // camera zooming and panning is incorporated in this model matrix.
-        const auto world_pos {world_to_screen(canvas.pos, info.world_offset)};
-        math::mat4f model {math::translate(world_pos.x, world_pos.y, 0.0f)*
+        const auto pos {world_to_screen(canvas.pos, info.world_offset)};
+        math::mat4f model {math::translate(pos.x, pos.y, 0.0f)*
                            math::scale(zoom_scale*cw, zoom_scale*ch, 1.0f)};
 
         graphics::bind_vertex_array(canvas_vao);
@@ -879,37 +895,198 @@ void application::draw()
         textured_quad_shader.set_float("u_temp_toggle", 1.0f);
         graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+        // draw brush/eraser outline
+        {
+            const auto canvas_world_center_x {canvas.pos.x};
+            const auto canvas_world_center_y {canvas.pos.y};
+            const auto canvas_lower_left_x   {canvas_world_center_x-canvas.width*0.5f};
+            const auto canvas_lower_left_y   {canvas_world_center_y-canvas.height*0.5f};
+            const auto canvas_upper_right_x  {canvas_world_center_x+canvas.width*0.5f};
+            const auto canvas_upper_right_y  {canvas_world_center_y+canvas.height*0.5f};
+
+            const auto [mx, my] {input_manager::instance()->get_mouse_gl()};
+            const auto world_mpos {screen_to_world({mx, my}, info.world_offset)};
+            bool inside_canvas {world_mpos.x >= canvas_lower_left_x &&
+                                world_mpos.x <= canvas_upper_right_x &&
+                                world_mpos.y >= canvas_lower_left_y &&
+                                world_mpos.y <= canvas_upper_right_y};
+
+            if (inside_canvas && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow)) {
+                graphics::bind_vertex_array(circle_vao);
+                circle_shader.use_shader();
+                
+                auto r {pen_.brush_size*0.5f*zoom_scale};
+                if (imgui_.eraser_selected) r = eraser_.r*zoom_scale;
+                math::mat4f m {math::translate(mx, my, 0.0f)*
+                               math::scale(r*2, r*2, 1.0f)};
+                circle_shader.set_mat4("u_mvp", window_projection*m);
+                circle_shader.set_float("u_radius", r);
+                circle_shader.set_vec2("u_center_world", mx, my);
+                circle_shader.set_vec4("u_color", vec4{1.0f, 0.0f, 1.0f, 1.0f});
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+            }
+        }
         
         if (info.in_resize_mode) {
+            graphics::bind_vertex_array(canvas_vao);
             // line shader is basically colored quad shader, RENAME later
             line_shader.use_shader();
             constexpr int resize_button_len {15};
             for (const auto& [dx, dy]:resize_dirs) {
-                math::mat4f quad_model {math::translate(world_pos.x+(0.5f*cw*zoom_scale*dx), world_pos.y+(0.5f*ch*zoom_scale*dy), 0.0f)*
+                math::mat4f quad_model {math::translate(pos.x+(0.5f*cw*zoom_scale*dx), pos.y+(0.5f*ch*zoom_scale*dy), 0.0f)*
                                         math::scale(zoom_scale*resize_button_len, zoom_scale*resize_button_len, 1.0f)};
                 line_shader.set_mat4("u_mvp", window_projection*quad_model);
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
             }
         }
 
-        // TODO: reimplement this in a better way. Doesn't work anymore
         if (info.resizing) {
-            model = math::translate(world_pos.x, world_pos.y, 0.0f)*
-                    math::scale(zoom_scale*static_cast<float>(info.new_width), zoom_scale*static_cast<float>(info.new_height), 1.0f);
+            graphics::bind_vertex_array(line_vao);
+            line_shader.use_shader();
+            line_shader.set_mat4("u_mvp", window_projection);
 
-            graphics::bind_vertex_array(canvas_vao);
-            textured_quad_shader.set_mat4("u_mvp", window_projection*model);
-            textured_quad_shader.set_float("u_temp_toggle", 0.0f);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-            graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            const auto offset_x {info.new_width-canvas.width};
+            const auto offset_y {info.new_height-canvas.height};
+
+            std::vector<line> resize_lines; resize_lines.reserve(4);
+            switch (info.resize_button_index) {
+                case 0: {
+                    const auto p1 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
+                    const auto p2 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
+                    const auto p3 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+
+                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
+                    resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p4 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p4, p3, {}, 1.0f});
+                    }
+                    if (offset_y > 0) {
+                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
+                    }
+                } break;
+                case 1: {
+                    const auto p1 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+                    const auto p2 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p3 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+                        const auto p4 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
+                        resize_lines.emplace_back(line{p2, p4, {}, 1.0f});
+                    }
+                } break;
+                case 2: {
+                    const auto p1 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
+                    const auto p2 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
+                    const auto p3 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+
+                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
+                    resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p4 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p4, p3, {}, 1.0f});
+                    }
+                    if (offset_y > 0) {
+                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
+                    }
+                } break;
+                case 3: {
+                    const auto p1 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
+                    const auto p2 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
+                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
+                    if (offset_y > 0) {
+                        const auto p3 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p3, p1, {}, 1.0f});
+                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
+                    }
+                } break;
+                case 4: {
+                    const auto p1 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
+                    const auto p2 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
+                    const auto p3 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+
+                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
+                    resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p4, p3, {}, 1.0f});
+                    }
+                    if (offset_y > 0) {
+                        const auto p4 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
+                    }
+                } break;
+                case 5: {
+                    const auto p1 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+                    const auto p2 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p3 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
+                        resize_lines.emplace_back(line{p2, p4, {}, 1.0f});
+                    }
+                } break;
+                case 6: {
+                    const auto p1 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
+                    const auto p2 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
+                    const auto p3 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+
+                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
+                    resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p4, p3, {}, 1.0f});
+                    }
+                    if (offset_y > 0) {
+                        const auto p4 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
+                    }
+                } break;
+                case 7: {
+                    const auto p1 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
+                    const auto p2 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
+                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
+                    if (offset_y > 0) {
+                        const auto p3 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
+                        resize_lines.emplace_back(line{p3, p1, {}, 1.0f});
+                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
+                    }
+                } break;
+                default:
+                    break;
+            }
+
+            for (const auto& line:resize_lines) {
+                for (const auto& l:generic_add_line(line)) {
+                    line_batcher.lines_data.emplace_back(l);
+                }
+            }
+
+            // using line batcher here as well. Think of a better way in the future.
+            {
+                int line_count {static_cast<int>((line_batcher.lines_data.size()/4))};
+                int iterations {line_count / MAX_PER_BATCH};
+                int leftover   {line_count - (MAX_PER_BATCH*iterations)};
+                for (int i{}; i<iterations; ++i) {
+                    graphics::buffer_upload_subdata(line_vbo, 0, 4*MAX_PER_BATCH*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+i*MAX_PER_BATCH*4);
+                    glDrawElements(GL_TRIANGLES, MAX_PER_BATCH*6, GL_UNSIGNED_INT, nullptr);
+                }
+                if (leftover > 0) {
+                    graphics::buffer_upload_subdata(line_vbo, 0, 4*static_cast<u32>(leftover)*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+iterations*MAX_PER_BATCH*4);
+                    glDrawElements(GL_TRIANGLES, leftover*6, GL_UNSIGNED_INT, nullptr);
+                }
+                line_batcher.lines_data.clear();
+            }
         }
     }
 
 }
-
-void application::test_draw()
-{}
 
 }

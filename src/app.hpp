@@ -23,11 +23,10 @@ struct brush_point {
     float r {};
 };
 
-// #TODO: change this later 
 struct line {
-    vec2 p1, p2;
-    float thickness_1 {};
-    float thickness_2 {};
+    vec2 p1 {}, p2 {};
+    vec3 color {};
+    float thickness {};
 };
 
 namespace sdl {
@@ -67,6 +66,14 @@ struct imgui {
 
     [[nodiscard]]
     bool is_imgui_captured() noexcept;
+
+    [[nodiscard]]
+    bool is_imgui_hovered() noexcept;
+
+    bool show_tools {true};
+    bool update_canvas {};
+    bool pen_selected {true};
+    bool eraser_selected {};
 };
 
 }
@@ -91,9 +98,7 @@ private:
     imgui::imgui imgui_;
 
     void update(float dt);
-    void test_update(float dt);
     void draw();
-    void test_draw();
 
     // gl entities.
     gl::vertex_array circle_vao;
@@ -142,6 +147,10 @@ private:
         std::array<float, 3> brush_color {};
         float brush_size {10.0f};
     } pen_;
+
+    struct eraser {
+        float r {10.0f};
+    } eraser_;
 
     struct info {
         vec2 world_offset {};
