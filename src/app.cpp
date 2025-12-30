@@ -11,13 +11,15 @@
 
 #include <print>
 #include <utility>
+#include <strstream>
+#include <fstream>
+#include <queue>
 
 #include "input_manager.hpp"
 #include "graphics/graphics.hpp"
 
 namespace {
 
-constexpr bool TESTING {false};
 constexpr int MAX_FPS {500};
 std::vector<peria::brush_point> ps;
 std::vector<peria::gl::texture2d> temp_vec; 
@@ -219,10 +221,10 @@ application::application(application_settings&& settings)
      circle_shader{"./assets/shaders/circle.vert", "./assets/shaders/circle.frag"},
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      line_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"},
-     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA16F)},
+     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA32F)},
             gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
             static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, graphics::WHITE},
-     temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA16F)}}, {}, canvas.width, canvas.height}
+     temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}}, {}, canvas.width, canvas.height}
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
@@ -435,6 +437,8 @@ void application::run()
                 if (imgui_.show_tools) imgui_.show_tools = false;
                 else                   imgui_.show_tools = true;
             }
+            ImGui::Text("Width %d", canvas.width);
+            ImGui::Text("Height %d", canvas.height);
         }
         ImGui::EndMainMenuBar();
 
@@ -448,13 +452,29 @@ void application::run()
                     zoom_scale = 1.0f;
                 }
                 if (ImGui::Checkbox("pen_brush", &imgui_.pen_selected)) {
-                    imgui_.eraser_selected = !imgui_.pen_selected;
+                    if (imgui_.pen_selected) {
+                        imgui_.eraser_selected = false;
+                        imgui_.bucket_selected = false;
+                    }
                 }
                 if (ImGui::Checkbox("eraser", &imgui_.eraser_selected)) {
-                    imgui_.pen_selected = !imgui_.eraser_selected;
+                    if (imgui_.eraser_selected) {
+                        imgui_.pen_selected = false;
+                        imgui_.bucket_selected = false;
+                    }
+                }
+                if (ImGui::Checkbox("bucket", &imgui_.bucket_selected)) {
+                    if (imgui_.bucket_selected) {
+                        imgui_.pen_selected = false;
+                        imgui_.eraser_selected = false;
+                    }
                 }
             }
             ImGui::End();
+
+            if (!imgui_.bucket_selected && !imgui_.eraser_selected) {
+                imgui_.pen_selected = true;
+            }
         }
             
         ImGui::Render();
@@ -498,11 +518,19 @@ void application::update(float dt)
     if (im->key_pressed(SDL_SCANCODE_B)) {
         imgui_.pen_selected = true;
         imgui_.eraser_selected = false;
+        imgui_.bucket_selected = false;
     }
 
     if (im->key_pressed(SDL_SCANCODE_E)) {
         imgui_.eraser_selected = true;
         imgui_.pen_selected = false;
+        imgui_.bucket_selected = false;
+    }
+
+    if (im->key_pressed(SDL_SCANCODE_G)) {
+        imgui_.bucket_selected = true;
+        imgui_.pen_selected = false;
+        imgui_.eraser_selected = false;
     }
 
     if (im->key_pressed(SDL_SCANCODE_R)) {
@@ -562,6 +590,115 @@ void application::update(float dt)
             return -1;
         };
 
+        if (imgui_.bucket_selected && inside_canvas && im->mouse_pressed(mouse_button::LEFT)) {
+            // do bucket fill tool logic here
+
+            //glPixelStorei(GL_PACK_ALIGNMENT,   1);
+            //glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+            // seems we only need this one
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, canvas.width);
+            std::vector<float> pixels(static_cast<std::size_t>(canvas.width*canvas.height*4), 0);
+            glGetTextureImage(canvas.texture.id, 0, GL_RGBA, GL_FLOAT, pixels.size()*sizeof(float), &pixels[0]);
+
+            // mouse position relative to canvas cast to ints to get pixel coords. (lower left of canvas is zero zero)
+            const veci2 mp {static_cast<int>(world_mpos.x-canvas_lower_left_x), static_cast<int>(world_mpos.y-canvas_lower_left_y)};
+
+            std::vector<bool> visited(canvas.width*canvas.height, false);
+
+            std::queue<veci2> q;
+            q.push(mp);
+
+            std::vector<veci2> to_color; 
+            to_color.reserve((canvas.width*canvas.height)/2);
+
+            //constexpr vec4 new_color {0.0f, 1.0f, 1.0f, 1.0f};
+            // reuse brush color for bucket tool
+            vec3 new_color {pen_.brush_color[0], pen_.brush_color[1], pen_.brush_color[2]};
+
+            vec3 old_color {
+                pixels[(mp.y*canvas.width+mp.x) + 0],
+                pixels[(mp.y*canvas.width+mp.x) + 1],
+                pixels[(mp.y*canvas.width+mp.x) + 2]
+            };
+
+            auto float_eq = [](float a, float b) {
+                //std::println("old {}  current {}", b, a);
+                constexpr long double epsilon {0.000000001};
+                auto aa {static_cast<long double>(a)};
+                auto bb {static_cast<long double>(b)};
+                return std::abs(aa-bb) <= (std::max(aa, bb)*epsilon);
+            };
+
+            while (!q.empty()) {
+                const auto coord {q.front()}; q.pop();
+                if (visited[coord.y*canvas.width+coord.x]) {
+                    continue;
+                }
+                visited[coord.y*canvas.width+coord.x] = true;
+                to_color.emplace_back(coord.x, coord.y);
+                for (int dx{-1}; dx<=1; ++dx) {
+                    for (int dy{-1}; dy<=1; ++dy) {
+                        if (dx == 0 && dy == 0) continue;
+                        const auto x {coord.x + dx};
+                        const auto y {coord.y + dy};
+                        if ((x>=0 && x<canvas.width && y>=0 && y<canvas.height) && 
+                            !visited[y*canvas.width+x] &&
+                            float_eq(pixels[(y*canvas.width+x)*4 + 0], old_color.x) &&
+                            float_eq(pixels[(y*canvas.width+x)*4 + 1], old_color.y) &&
+                            float_eq(pixels[(y*canvas.width+x)*4 + 2], old_color.z) //&&
+                            /*float_eq(pixels[(y*canvas.width+x)*4 + 3], old_color.w)*/) {
+                            q.push({x, y});
+                        }
+                        //std::println();
+                    }
+                }
+            }
+            for (const auto& [x, y]:to_color) {
+                pixels[(y*canvas.width+x)*4 + 0] = new_color.x; 
+                pixels[(y*canvas.width+x)*4 + 1] = new_color.y;
+                pixels[(y*canvas.width+x)*4 + 2] = new_color.z;
+                pixels[(y*canvas.width+x)*4 + 3] = 1.0f;
+            }
+
+            //constexpr veci2 off {200, 100};
+            //const int ww {std::min(mp.x+off.x, canvas.width)};
+            //const int hh {std::min(mp.y+off.y, canvas.height)};
+
+            //for (int y{mp.y}; y<hh; ++y) {
+            //    for (int x{mp.x}; x<ww; ++x) {
+            //        pixels[(y*canvas.width+x)*4 + 0] = 0.0f; // R
+            //        pixels[(y*canvas.width+x)*4 + 1] = 1.0f; // G
+            //        pixels[(y*canvas.width+x)*4 + 2] = 1.0f; // B
+            //        pixels[(y*canvas.width+x)*4 + 3] = 1.0f; // A
+            //    }
+            //}
+            glTextureSubImage2D(canvas.texture.id, 0, 
+                                0, 0,
+                                canvas.width, canvas.height,
+                                GL_RGBA, GL_FLOAT, &pixels[0]);
+            //std::ofstream os{"example.txt"};
+            //if (os.is_open()) {
+            //    // [][][][] [][][][] [][][][] ... [][][][]
+            //    // [][][][] [][][][] [][][][] ... [][][][]
+            //    // [][][][] [][][][] [][][][] ... [][][][]
+            //    // |---------- pixelcnt = 50 ------------|
+            //    // so in total 50*channelCount in each row
+            //    for (int r{}; r<canvas.width; ++r) {
+            //        for (int c{}; c<canvas.height*4; ++c) {
+            //            os << pixels[r*canvas.width + c] << ' ';
+            //        }
+            //        os << '\n';
+            //    }
+            //    os.close();
+            //}
+            //else {
+            //    std::println("FUCK YOUUUUUUU!!!!!!!!!!!!!!!!!!!!");
+            //}
+
+            return;
+        }
+
         if (info.in_resize_mode) {
             if (!info.resizing) {
                 // determine if we are resizing, and from which button
@@ -573,23 +710,14 @@ void application::update(float dt)
                 }
             }
             if (info.resizing && im->mouse_down(mouse_button::LEFT)) {
-                // REMOVE ME LATER
-                //const auto rel_motion {graphics::get_relative_motion()};
-                //const auto dx {rel_motion.x*(resize_dirs[info.resize_button_index].x)};
-                //const auto dy {rel_motion.y*(resize_dirs[info.resize_button_index].y)};
-                //info.new_width  += static_cast<int>(dx);
-                //info.new_height += static_cast<int>(dy);
-
                 const auto dx {world_mpos.x-(canvas.pos.x+resize_dirs[info.resize_button_index].x*canvas.width*0.5f)};
                 const auto dy {world_mpos.y-(canvas.pos.y+resize_dirs[info.resize_button_index].y*canvas.height*0.5f)};
 
                 info.new_width  = static_cast<int>(canvas.width+dx*resize_dirs[info.resize_button_index].x);
                 info.new_height = static_cast<int>(canvas.height+dy*resize_dirs[info.resize_button_index].y);
-
-                //std::println("rel motion {} {}, index {}", dx, dy, info.resize_button_index);
             }
             if (info.resizing && im->mouse_released(mouse_button::LEFT)) {
-                temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA16F);
+                temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA32F);
                 glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
                 const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
                 if (status != GL_FRAMEBUFFER_COMPLETE) {
@@ -599,7 +727,7 @@ void application::update(float dt)
                 info.resized = true;
             }
         } 
-        else {
+        else if (!imgui_.bucket_selected) {
             // brush stroke related stuff here
             // only add brush strokes and do drawing if not in resize mode
             if (im->mouse_released(mouse_button::LEFT) && inside_canvas && !info.mouse_moved) {

@@ -74,6 +74,7 @@ struct imgui {
     bool update_canvas {};
     bool pen_selected {true};
     bool eraser_selected {};
+    bool bucket_selected {};
 };
 
 }
