@@ -1,8 +1,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#include <print>
-
 #include "app.hpp"
 
 int main([[maybe_unused]]int argc, [[maybe_unused]]char** argv)
