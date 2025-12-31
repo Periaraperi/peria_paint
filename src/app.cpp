@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <glad/glad.h>
 
 #include <imgui.h>
@@ -119,6 +120,23 @@ std::vector<peria::gl::vertex<peria::gl::pos2, peria::gl::color4>> generic_add_l
     };
 }
 
+[[nodiscard]]
+std::vector<std::string> get_all_png_images()
+{
+    std::vector<std::string> res;
+    std::filesystem::path p{"./test/"};
+    std::filesystem::directory_iterator it{p};
+    for (const auto& entry:it) {
+        if (entry.is_regular_file()) {
+            const auto name {entry.path().filename().string()};
+            if (name.size() > 4) { // only take [something].png files
+                if (name.substr(name.size()-4) == ".png") res.emplace_back(name);
+            }
+        }
+    }
+    return res;
+}
+
 }
 
 namespace peria {
@@ -219,7 +237,7 @@ application::application(application_settings&& settings)
      line_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"},
      canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA32F)},
             gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
-            static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, graphics::WHITE},
+            static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, graphics::WHITE, ""},
      temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}}, {}, canvas.width, canvas.height}
 {
     if (!sdl_initializer_.initialized) return;
@@ -424,16 +442,42 @@ void application::run()
 
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::Button("save")) {
-                graphics::write_to_png(canvas.texture, canvas.width, canvas.height);
+                canvas.filename = graphics::write_to_png(canvas.texture, canvas.width, canvas.height, canvas.filename.c_str());
             }
+            if (ImGui::BeginMenu("open")) {
+                const auto files {get_all_png_images()};
+                for (const auto& f:files) {
+                    if (ImGui::MenuItem(f.c_str())) {
+                        auto image {graphics::load_png(("./test/"+f).c_str())};
+
+                        canvas.texture = std::move(image.texture);
+                        canvas.width = image.width;
+                        canvas.height = image.height;
+                        canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+
+                        glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
+                        auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
+                        if (status != GL_FRAMEBUFFER_COMPLETE) {
+                            std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
+                        }
+
+                        canvas.filename = f.substr(0, f.size()-4);
+                        // std::println("clicked {} new name {}", f, canvas.filename);
+                    }
+                }
+                ImGui::EndMenu();
+            }
+
             if (ImGui::Button("tools")) {
                 if (imgui_.show_tools) imgui_.show_tools = false;
                 else                   imgui_.show_tools = true;
             }
+
             ImGui::Text("Width %d", canvas.width);
             ImGui::Text("Height %d", canvas.height);
+
+            ImGui::EndMainMenuBar();
         }
-        ImGui::EndMainMenuBar();
 
         if (imgui_.show_tools) {
             if (ImGui::Begin("tools")) {
@@ -462,8 +506,9 @@ void application::run()
                         imgui_.eraser_selected = false;
                     }
                 }
+
+                ImGui::End();
             }
-            ImGui::End();
 
             if (!imgui_.bucket_selected && !imgui_.eraser_selected) {
                 imgui_.pen_selected = true;
@@ -496,7 +541,7 @@ void application::update([[maybe_unused]]float dt)
     info.should_draw = false;
 
     if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_S)) {
-        graphics::write_to_png(canvas.texture, canvas.width, canvas.height);
+        canvas.filename = graphics::write_to_png(canvas.texture, canvas.width, canvas.height, canvas.filename.c_str());
     }
 
     if (im->key_pressed(SDL_SCANCODE_V)) {
@@ -602,7 +647,6 @@ void application::update([[maybe_unused]]float dt)
             pen_.brush_color[0] = pixels[(mp.y*canvas.width+mp.x)*4 + 0];
             pen_.brush_color[1] = pixels[(mp.y*canvas.width+mp.x)*4 + 1];
             pen_.brush_color[2] = pixels[(mp.y*canvas.width+mp.x)*4 + 2];
-            
             return;
         }
 
@@ -972,7 +1016,6 @@ void application::draw()
         if (info.should_empty) {
             pen_.brush_points.clear();
         }
-
     }
 
     // Last pass to render canvas on a quad and position it in the world based on world pos and world offset.

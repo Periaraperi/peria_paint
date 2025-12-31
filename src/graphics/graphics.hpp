@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -107,6 +108,13 @@ gl::texture2d create_texture2d_from_image(const char* path, std::int32_t& w, std
 
 gl::sampler create_sampler(int min_filter, int mag_filter, int wrap_s, int wrap_t, int wrap_r, const color& border_color=WHITE) noexcept;
 
-void write_to_png(const gl::texture2d& texture, int width, int height) noexcept;
+std::string write_to_png(const gl::texture2d& texture, int width, int height, const char* filename = "") noexcept;
+
+struct image_info {
+    gl::texture2d texture {};
+    std::int32_t width {};
+    std::int32_t height {};
+};
+image_info load_png(const char* path) noexcept;
 
 }

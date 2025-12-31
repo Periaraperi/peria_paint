@@ -134,6 +134,8 @@ private:
         vec2 pos {};
         math::mat4f projection;
         graphics::color bg_color;
+
+        std::string filename {};
     } canvas;
 
     struct temp_canvas {
