@@ -1,6 +1,7 @@
 #include "graphics.hpp"
 
 #include <SDL3/SDL.h>
+#include <filesystem>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -169,12 +170,67 @@ gl::texture2d create_texture2d_from_image(const char* path, i32& w, i32& h, i32&
     return texture;
 }
 
-void write_to_png(const gl::texture2d& texture, int width, int height) noexcept
+// REVISIT ME LATER
+std::string write_to_png(const gl::texture2d& texture, int width, int height, const char* filename) noexcept
 {
-    std::vector<u8> data(static_cast<std::size_t>(width*height*4), 0);
-    glGetTextureImage(texture.id, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.size()*sizeof(u8), &data[0]);
+    std::vector<float> data(static_cast<std::size_t>(width*height*4), 0);
+    glGetTextureImage(texture.id, 0, GL_RGBA, GL_FLOAT, data.size()*sizeof(float), &data[0]);
     stbi_flip_vertically_on_write(1);
-    stbi_write_png("./test/kek.png", width, height, 4, data.data(), width*4*sizeof(u8));
+
+    std::vector<u8> pixels(static_cast<std::size_t>(width*height*4), 0);
+
+    auto linear_to_srgb = [](float c) -> float {
+        c = std::clamp(c, 0.0f, 1.0f);
+        return std::powf(c, 1.0f / 2.2f);
+    };
+
+    for (int i{}; i<width*height; ++i) {
+        pixels[i*4 + 0] = static_cast<u8>(linear_to_srgb(data[i*4 + 0])*255.0f + 0.5f);
+        pixels[i*4 + 1] = static_cast<u8>(linear_to_srgb(data[i*4 + 1])*255.0f + 0.5f);
+        pixels[i*4 + 2] = static_cast<u8>(linear_to_srgb(data[i*4 + 2])*255.0f + 0.5f);
+        pixels[i*4 + 3] = static_cast<u8>(std::clamp(data[i*4 + 3], 0.0f, 1.0f)*255.0f + 0.5f);
+    }
+
+    std::string dir_name {"./test/"};
+    std::string file_name {filename};
+    if (file_name.empty()) {
+        int k {};
+        while (1) {
+            file_name = "untitled_peria_"+std::to_string(k);
+            if (std::filesystem::exists(std::filesystem::path{dir_name+file_name+".png"})) {
+                ++k;
+            }
+            else break;
+        }
+    }
+    const std::string path {"./test/"+file_name+".png"};
+    stbi_write_png(path.c_str(), width, height, 4, pixels.data(), width*4*sizeof(u8));
+    return file_name;
+}
+
+image_info load_png(const char* path) noexcept
+{
+    stbi_set_flip_vertically_on_load(true);
+
+    image_info info {};
+    i32 channel_count;
+    float* data {stbi_loadf(path, &info.width, &info.height, &channel_count, 0)};
+
+    if (data == nullptr) {
+        std::println("failed to load res: ", path);
+        return {};
+    }
+
+    i32 internal_format {channel_count == 4 ? GL_RGBA32F : GL_RGB8};
+    i32 format          {channel_count == 4 ? GL_RGBA : GL_RGB};
+
+    glTextureStorage2D(info.texture.id, 1, static_cast<GLenum>(internal_format), info.width, info.height);
+    glTextureSubImage2D(info.texture.id, 0, 0, 0, info.width, info.height, static_cast<GLenum>(format), GL_FLOAT, data);
+    glGenerateTextureMipmap(info.texture.id);
+
+    stbi_image_free(data); 
+    data = nullptr;
+    return info;
 }
 
 }
