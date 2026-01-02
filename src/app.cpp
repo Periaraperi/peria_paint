@@ -866,6 +866,7 @@ void application::draw()
 
         graphics::bind_vertex_array(circle_vao);
         circle_shader.use_shader();
+        circle_shader.set_int("u_is_ring", 0);
 
         {
             auto [r, g, b] {pen_.brush_color};
@@ -1057,6 +1058,17 @@ void application::draw()
                                 world_mpos.y >= canvas_lower_left_y &&
                                 world_mpos.y <= canvas_upper_right_y};
 
+            auto cursor_color = [](const std::array<float, 3>& c) -> vec4 {
+                vec4 ret {0.0f, 0.0f, 0.0f, 1.0f};
+                if (c[0] >= 0.5f) ret.x -= 0.5f;
+                else              ret.x += 0.5f;
+                if (c[1] >= 0.5f) ret.y -= 0.5f;
+                else              ret.y += 0.5f;
+                if (c[2] >= 0.5f) ret.z -= 0.5f;
+                else              ret.z += 0.5f;
+                return ret;
+            };
+
             if (inside_canvas && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow)) {
                 graphics::bind_vertex_array(circle_vao);
                 circle_shader.use_shader();
@@ -1067,8 +1079,10 @@ void application::draw()
                                math::scale(r*2, r*2, 1.0f)};
                 circle_shader.set_mat4("u_mvp", window_projection*m);
                 circle_shader.set_float("u_radius", r);
+                circle_shader.set_float("u_radius2", r*0.93f);
+                circle_shader.set_int("u_is_ring", 1);
                 circle_shader.set_vec2("u_center_world", mx, my);
-                circle_shader.set_vec4("u_color", vec4{1.0f, 0.0f, 1.0f, 1.0f});
+                circle_shader.set_vec4("u_color", cursor_color(pen_.brush_color));
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
             }
         }
