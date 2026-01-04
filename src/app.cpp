@@ -462,7 +462,9 @@ void application::run()
                         }
 
                         canvas.filename = f.substr(0, f.size()-4);
-                        // std::println("clicked {} new name {}", f, canvas.filename);
+                        canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
+                        info.world_offset = {0, 0};
+                        zoom_scale = 1.0f;
                     }
                 }
                 ImGui::EndMenu();
@@ -716,6 +718,7 @@ void application::update([[maybe_unused]]float dt)
                                 0, 0,
                                 canvas.width, canvas.height,
                                 GL_RGBA, GL_FLOAT, &pixels[0]);
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); // don't forget this
             return;
         }
 
