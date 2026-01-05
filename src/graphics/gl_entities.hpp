@@ -6,7 +6,6 @@
 #include <type_traits>
 
 namespace peria::gl {
-
 struct vertex_array {
     vertex_array() noexcept;
     ~vertex_array();

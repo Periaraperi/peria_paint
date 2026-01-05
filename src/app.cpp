@@ -4,7 +4,6 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
-#include <glad/glad.h>
 
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
@@ -16,6 +15,10 @@
 
 #include "input_manager.hpp"
 #include "graphics/graphics.hpp"
+
+#ifdef PERIA_DEBUG
+#include "graphics/gl_errors.hpp"
+#endif
 
 namespace {
 
@@ -158,6 +161,9 @@ sdl_initializer::sdl_initializer(const application_settings& settings) noexcept
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+#ifdef PERIA_DEBUG
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG); // removing this will disable GL_CONTEXT_FLAG_DEBUG_BIT
+#endif
 
     auto window_flags {SDL_WINDOW_OPENGL};
     if (settings.resizable) window_flags |= SDL_WINDOW_RESIZABLE;
@@ -252,6 +258,46 @@ application::application(application_settings&& settings)
         peria::graphics::set_relative_mouse(sdl_initializer_.window, false);
         peria::graphics::set_screen_size(app_settings_.window_width, app_settings_.window_height);
         window_projection = math::get_ortho_projection(0.0f, static_cast<float>(app_settings_.window_width), 0.0f, static_cast<float>(app_settings_.window_height));
+    }
+
+    // extensions and info
+    {
+        std::println("Vendor graphic card: {}", reinterpret_cast<const char*>(glGetString(GL_VENDOR)));
+        std::println("Renderer: {}",            reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
+        std::println("Version GL: {}",          reinterpret_cast<const char*>(glGetString(GL_VERSION)));
+        std::println("Version GLSL: {}",        reinterpret_cast<const char*>(glGetString(GL_SHADING_LANGUAGE_VERSION)));
+
+        int extension_count {};
+        glGetIntegerv(GL_NUM_EXTENSIONS, &extension_count);
+        std::println("Extension count = {}", extension_count);
+        std::vector<std::string> extensions; extensions.reserve(static_cast<std::size_t>(extension_count));
+        for (int i{}; i<extension_count; ++i) {
+            // names of GL_EXTENSIONS are ascii strings. So using reinterpret cast is valid option
+            std::string ext_name{reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, static_cast<u32>(i)))};
+            extensions.push_back(std::move(ext_name));
+        }
+
+        if (std::find(extensions.begin(), extensions.end(), "GL_ARB_debug_output") != extensions.end()) {
+            std::println("{} is supported", "GL_ARB_debug_output");
+        }
+        else {
+            std::println("{} is NOT supported", "GL_ARB_debug_output");
+        }
+
+#ifdef PERIA_DEBUG
+        int gl_flags {};
+        glGetIntegerv(GL_CONTEXT_FLAGS, &gl_flags);
+        if (gl_flags & GL_CONTEXT_FLAG_DEBUG_BIT) {
+            std::println("Debug context flag is ON!");
+            glEnable(GL_DEBUG_OUTPUT);
+            glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+            glDebugMessageCallback(gl::debug_callback, nullptr);
+            glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
+        }
+        else {
+            std::println("Debug context is not supported!");
+        }
+#endif
     }
 
     // GL entities here
@@ -726,7 +772,6 @@ void application::update([[maybe_unused]]float dt)
             if (!info.resizing) {
                 // determine if we are resizing, and from which button
                 const auto index {mouse_inside_button()};
-                std::println("We are inside button {}", index);
                 if(index != -1 && im->mouse_pressed(mouse_button::LEFT)) {
                     info.resizing = true;
                     info.resize_button_index = index;
@@ -1248,7 +1293,6 @@ void application::draw()
             }
         }
     }
-
 }
 
 }
