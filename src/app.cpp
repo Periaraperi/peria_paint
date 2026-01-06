@@ -535,6 +535,8 @@ void application::run()
                 if (ImGui::Button("center")) {
                     info.world_offset = {0, 0};
                     zoom_scale = 1.0f;
+                    canvas.pos.x = static_cast<float>(app_settings_.window_width)*0.5f;
+                    canvas.pos.y = static_cast<float>(app_settings_.window_height)*0.5f;
                 }
                 if (ImGui::Checkbox("pen_brush", &imgui_.pen_selected)) {
                     if (imgui_.pen_selected) {
@@ -627,11 +629,16 @@ void application::update([[maybe_unused]]float dt)
     if (im->key_pressed(SDL_SCANCODE_C)) {
         info.world_offset = {0, 0};
         zoom_scale = 1.0f;
+        canvas.pos.x = static_cast<float>(app_settings_.window_width)*0.5f;
+        canvas.pos.y = static_cast<float>(app_settings_.window_height)*0.5f;
     }
 
     if (imgui_.is_imgui_hovered()) {
         info.should_draw = true;
         info.should_empty = true;
+        if (info.resizing && !info.resized) {
+            info.resizing = false;
+        }
         return;
     }
 
