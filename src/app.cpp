@@ -244,6 +244,9 @@ application::application(application_settings&& settings)
      canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA32F)},
             gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
             static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, graphics::WHITE, ""},
+     transparent_canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA32F)},
+            gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
+            static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, graphics::WHITE, ""},
      temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}}, {}, canvas.width, canvas.height}
 {
     if (!sdl_initializer_.initialized) return;
@@ -381,6 +384,13 @@ application::application(application_settings&& settings)
             if (status != GL_FRAMEBUFFER_COMPLETE) {
                 std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
             }
+
+            glNamedFramebufferTexture(transparent_canvas.buffer.id, GL_COLOR_ATTACHMENT0, transparent_canvas.texture.id, 0);
+            status = glCheckNamedFramebufferStatus(transparent_canvas.buffer.id, GL_FRAMEBUFFER);
+            if (status != GL_FRAMEBUFFER_COMPLETE) {
+                std::println("FrameBuffer with id {} is incomplete\n {}", transparent_canvas.buffer.id, status);
+            }
+
             glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
             status = glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER);
             if (status != GL_FRAMEBUFFER_COMPLETE) {
@@ -390,9 +400,13 @@ application::application(application_settings&& settings)
 
         textured_quad_shader.set_int("u_canvas_texture", 0);
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+        transparent_canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
         canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
+        transparent_canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
         info.new_width = canvas.width;
         info.new_height = canvas.height;
+        transparent_canvas.width = canvas.width;
+        transparent_canvas.height = canvas.height;
     }
 
     pen_.brush_points.reserve(2048);
@@ -532,6 +546,11 @@ void application::run()
                 ImGui::ColorPicker3("pen_brush_color", pen_.brush_color.data());
                 ImGui::SliderFloat("pen_brush_size", &pen_.brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f);
                 ImGui::SliderFloat("eraser_radius", &eraser_.r, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f);
+                if (ImGui::Checkbox("selection", &info.in_selection_mode)) {
+                    if (info.in_selection_mode) {
+                        info.in_resize_mode = false;
+                    }
+                }
                 if (ImGui::Button("center")) {
                     info.world_offset = {0, 0};
                     zoom_scale = 1.0f;
@@ -623,7 +642,10 @@ void application::update([[maybe_unused]]float dt)
 
     if (im->key_pressed(SDL_SCANCODE_R)) {
         if (info.in_resize_mode) info.in_resize_mode = false;
-        else                     info.in_resize_mode = true;
+        else {
+            info.in_resize_mode = true;
+            info.in_selection_mode = false;
+        }
     }
 
     if (im->key_pressed(SDL_SCANCODE_C)) {
@@ -707,7 +729,6 @@ void application::update([[maybe_unused]]float dt)
 
         // do bucket fill tool logic here
         if (imgui_.bucket_selected && inside_canvas && im->mouse_pressed(mouse_button::LEFT)) {
-            // seems we only need this one
             glPixelStorei(GL_UNPACK_ROW_LENGTH, canvas.width);
 
             std::vector<float> pixels(static_cast<std::size_t>(canvas.width*canvas.height*4), 0);
@@ -772,6 +793,36 @@ void application::update([[maybe_unused]]float dt)
                                 canvas.width, canvas.height,
                                 GL_RGBA, GL_FLOAT, &pixels[0]);
             glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); // don't forget this
+            return;
+        }
+
+        if (info.in_selection_mode) {
+            if (inside_canvas) {
+                if (!selection_info.done) {
+                    if (im->mouse_pressed(mouse_button::LEFT)) {
+                        selection_info.done = false;
+                        selection_info.p1 = {world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y};
+                    }
+                    if (im->mouse_down(mouse_button::LEFT)) {
+                        selection_info.is_selecting = true;
+                        selection_info.p2 = {world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y};
+                        //std::println("{} {}", selection_info.p2.x, selection_info.p2.y);
+                        const auto sz {selection_info.p2-selection_info.p1};
+                        // we are done, mark this. And make the user be able to drag rect selection around the canvas
+                    }
+                    if (im->mouse_released(mouse_button::LEFT)) {
+                        selection_info.is_selecting = false;
+                        selection_info.done = true; // if this is true I should be able to move around
+                    }
+                }
+                else {
+                    if (im->mouse_pressed(mouse_button::RIGHT)) { // TODO: change me later 
+                        selection_info.done = false;
+                    }
+                    // check if mouse is held inside selected rect to be able to drag it.
+                    // if we click outside of that region, reset state of selection
+                }
+            }
             return;
         }
 
@@ -916,6 +967,7 @@ void application::draw()
 
     // Only draw if we are doing brush strokes.
     if (info.should_draw) {
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         graphics::bind_frame_buffer(canvas.buffer);
         graphics::set_viewport(0, 0, canvas.width, canvas.height);
 
@@ -1074,11 +1126,58 @@ void application::draw()
         }
     }
 
+    // SELECTION MODE THINGY
+    {
+        if (info.in_selection_mode && selection_info.is_selecting) {
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // need for this here
+            graphics::set_viewport(0, 0, transparent_canvas.width, transparent_canvas.height);
+            graphics::bind_frame_buffer(transparent_canvas.buffer);
+            graphics::clear_buffer_color(transparent_canvas.buffer.id, graphics::color{0.0f, 0.0f, 0.0f, 0.0f});
+
+            graphics::bind_vertex_array(line_vao);
+            line_shader.use_shader();
+            line_shader.set_mat4("u_mvp", canvas.projection);
+            const auto& [x1, y1] {selection_info.p1};
+            const auto& [x2, y2] {selection_info.p2};
+            const auto diff {selection_info.p2-selection_info.p1};
+            std::array lines {
+                line {{x1, y1}, {x1+diff.x, y1}, {1,0,0}, 2.0f},
+                line {{x1, y1}, {x1, y1+diff.y}, {1,0,0}, 2.0f},
+                line {{x2, y2}, {x2, y2-diff.y}, {1,0,0}, 2.0f},
+                line {{x2, y2}, {x2-diff.x, y2}, {1,0,0}, 2.0f},
+            };
+            for (const auto& line:lines) {
+                for (const auto& l:generic_add_line(line)) {
+                    line_batcher.lines_data.emplace_back(l);
+                }
+            }
+
+            // using line batcher here as well. Think of a better way in the future.
+            {
+                int line_count {static_cast<int>((line_batcher.lines_data.size()/4))};
+                int iterations {line_count / MAX_PER_BATCH};
+                int leftover   {line_count - (MAX_PER_BATCH*iterations)};
+                for (int i{}; i<iterations; ++i) {
+                    graphics::buffer_upload_subdata(line_vbo, 0, 4*MAX_PER_BATCH*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+i*MAX_PER_BATCH*4);
+                    glDrawElements(GL_TRIANGLES, MAX_PER_BATCH*6, GL_UNSIGNED_INT, nullptr);
+                }
+                if (leftover > 0) {
+                    graphics::buffer_upload_subdata(line_vbo, 0, 4*static_cast<u32>(leftover)*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+iterations*MAX_PER_BATCH*4);
+                    glDrawElements(GL_TRIANGLES, leftover*6, GL_UNSIGNED_INT, nullptr);
+                }
+                line_batcher.lines_data.clear();
+            }
+
+        }
+
+    }
+
     // Last pass to render canvas on a quad and position it in the world based on world pos and world offset.
     {
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
         graphics::bind_frame_buffer_default();
         graphics::clear_buffer_all(0, graphics::GREY, 1.0f, 0);
-        graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
 
         const auto cw {static_cast<float>(canvas.width)};
         const auto ch {static_cast<float>(canvas.height)};
@@ -1096,6 +1195,13 @@ void application::draw()
         textured_quad_shader.set_float("u_temp_toggle", 1.0f);
         graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+        if (info.in_selection_mode && selection_info.is_selecting) {
+            graphics::bind_texture_and_sampler(transparent_canvas.texture, transparent_canvas.sampler, 0);
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+            graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
+        }
+
 
         // draw brush/eraser outline
         {
@@ -1299,6 +1405,7 @@ void application::draw()
                 line_batcher.lines_data.clear();
             }
         }
+
     }
 }
 

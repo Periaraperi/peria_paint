@@ -136,7 +136,7 @@ private:
         graphics::color bg_color;
 
         std::string filename {};
-    } canvas;
+    } canvas, transparent_canvas;
 
     struct temp_canvas {
         gl::texture2d texture;
@@ -169,7 +169,15 @@ private:
         int new_height {};
         bool in_resize_mode {false};
         int resize_button_index {-1};
+        bool in_selection_mode {false};
     } info;
+
+    struct rect_selection {
+        bool is_selecting {false};
+        bool done {false};
+        vec2 p1 {};
+        vec2 p2 {};
+    } selection_info;
 
     std::array<veci2, 8> resize_dirs {{
         {-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}
