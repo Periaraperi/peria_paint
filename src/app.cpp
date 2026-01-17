@@ -575,15 +575,14 @@ void application::run()
                         imgui_.eraser_selected = false;
                     }
                 }
-
-                ImGui::End();
             }
+            ImGui::End();
 
             if (!imgui_.bucket_selected && !imgui_.eraser_selected) {
                 imgui_.pen_selected = true;
             }
         }
-            
+
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
