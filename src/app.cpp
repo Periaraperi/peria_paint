@@ -543,9 +543,9 @@ void application::run()
 
         if (imgui_.show_tools) {
             if (ImGui::Begin("tools")) {
-                ImGui::ColorPicker3("pen_brush_color", pen_.brush_color.data());
-                ImGui::SliderFloat("pen_brush_size", &pen_.brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f);
-                ImGui::SliderFloat("eraser_radius", &eraser_.r, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f);
+                if (ImGui::ColorPicker3("pen_brush_color", pen_.brush_color.data())) {}
+                if (ImGui::SliderFloat("pen_brush_size", &pen_.brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {}
+                if (ImGui::SliderFloat("eraser_radius", &eraser_.r, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {}
                 if (ImGui::Checkbox("selection", &info.in_selection_mode)) {
                     if (info.in_selection_mode) {
                         info.in_resize_mode = false;
