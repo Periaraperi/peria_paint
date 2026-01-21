@@ -148,6 +148,12 @@ namespace sdl {
 
 sdl_initializer::sdl_initializer(const application_settings& settings) noexcept
 {
+    for (int i{}; i<SDL_GetNumVideoDrivers(); ++i) {
+        if (std::string{SDL_GetVideoDriver(i)} == "wayland") {
+            SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, "wayland", SDL_HINT_OVERRIDE);
+            break;
+        }
+    }
     std::println("Initializing SDL");
     initialized = SDL_Init(SDL_INIT_VIDEO);
     if (!initialized) {
