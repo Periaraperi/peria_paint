@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <sstream>
 #include <string>
-#include <print>
 
 namespace peria::math {
 
