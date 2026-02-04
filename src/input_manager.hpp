@@ -57,8 +57,15 @@ public:
     [[nodiscard]]
     mouse get_mouse_gl() const noexcept;
 
+    [[nodiscard]]
+    bool mouse_moving() const noexcept;
+
+    [[nodiscard]]
+    bool mouse_moved_previous_frame() const noexcept;
+
     void update_prev_state();
     void update_mouse() noexcept;
+    void set_mouse_moved() noexcept;
 private:
     int keys_length_;
     const bool* keyboard_state_;
@@ -69,6 +76,9 @@ private:
 
     float mouse_x_;
     float mouse_y_;
+
+    bool mouse_moved_ {false};
+    bool prev_mouse_moved_ {false};
 
     static inline input_manager* instance_ptr_ {nullptr};
 

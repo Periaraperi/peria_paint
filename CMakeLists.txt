@@ -28,6 +28,7 @@ set(SRCS
     ${SRC_DIR}/graphics/shader.cpp
     ${SRC_DIR}/graphics/graphics.cpp
     ${SRC_DIR}/math/matrix.cpp
+    ${SRC_DIR}/math/camera2d.cpp
     
     ${EXTERNAL_SRCS}
 )

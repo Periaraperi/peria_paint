@@ -7,6 +7,7 @@
 #include "graphics/gl_entities.hpp"
 #include "graphics/shader.hpp"
 
+#include "math/camera2d.hpp"
 #include "math/vec.hpp"
 
 namespace peria {
@@ -19,13 +20,13 @@ struct application_settings {
 };
 
 struct brush_point {
-    vec2 p;
+    math::vec2f p;
     float r {};
 };
 
 struct line {
-    vec2 p1 {}, p2 {};
-    vec3 color {};
+    math::vec2f p1 {}, p2 {};
+    math::vec3f color {};
     float thickness {};
 };
 
@@ -79,6 +80,123 @@ struct imgui {
 
 }
 
+class application {
+public:
+    explicit application(application_settings&& settings);
+
+    application(const application&) = delete;
+    application& operator=(const application&) = delete;
+    application(application&&) = delete;
+    application& operator=(application&&) = delete;
+    ~application();
+
+    [[nodiscard]]
+    bool initialized() const noexcept;
+    void run();
+
+private:
+    application_settings app_settings_;
+    sdl::sdl_initializer sdl_initializer_;
+    imgui::imgui imgui_;
+
+    void update_refactor(float dt);
+    void draw_refactor();
+
+    // gl entities.
+    gl::vertex_array circle_vao;
+    gl::vertex_array canvas_vao;
+    gl::vertex_array line_vao;
+    gl::vertex_array line_resize_vao;
+    gl::vertex_array resize_button_quad_vao;
+
+    gl::named_buffer circle_vbo;
+    gl::named_buffer canvas_vbo;
+    gl::named_buffer line_vbo;
+    gl::named_buffer line_resize_vbo;
+    gl::named_buffer resize_button_quad_vbo;
+
+    gl::named_buffer quad_ibo;
+    gl::named_buffer line_ibo;
+    gl::named_buffer line_resize_ibo;
+
+    gl::shader circle_shader;
+    gl::shader textured_quad_shader;
+    gl::shader line_shader;
+
+    math::mat4f window_projection;
+    math::camera2d cam2d;
+
+    enum class app_mode {
+        DRAW = 0,
+        RESIZE = 1
+    } app_mode {app_mode::DRAW};
+
+    struct canvas {
+        gl::texture2d texture;
+        gl::sampler sampler;
+        gl::frame_buffer buffer;
+
+        int width  {};
+        int height {};
+        math::vec2f pos {};
+        math::mat4f projection;
+        graphics::color bg_color;
+
+        //std::string filename {};
+    } canvas; //, transparent_canvas;
+
+    std::vector<brush_point> brush_points;
+
+    //struct temp_canvas {
+    //    gl::texture2d texture;
+    //    gl::frame_buffer buffer;
+    //    int width  {};
+    //    int height {};
+    //} temp_canvas;
+
+    //struct pen_tool {
+    //    std::vector<brush_point> brush_points; // for brush stroke
+    //    std::array<float, 3> brush_color {};
+    //    float brush_size {10.0f};
+    //} pen_;
+
+    //struct eraser {
+    //    float r {10.0f};
+    //} eraser_;
+
+    struct info {
+        math::vec2f world_offset {};
+        float pan_speed {50.0f};
+        float resize_speed {100.0f};
+        bool should_draw {false};
+        bool should_empty {false};
+        bool resized {true};
+        bool resizing {false};
+        int new_width {};
+        int new_height {};
+        int resize_button_index {-1};
+    } info;
+
+    //struct rect_selection {
+    //    bool is_selecting {false};
+    //    bool done {false};
+    //    vec2 p1 {};
+    //    vec2 p2 {};
+    //} selection_info;
+
+    //std::array<veci2, 8> resize_dirs {{
+    //    {-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}
+    //}};
+
+    //static constexpr int MAX_PER_BATCH {4096}; // count
+
+    //struct line_batcher {
+    //    std::vector<gl::vertex<gl::pos2, gl::color4>> lines_data;
+    //    using vertex_t = typename gl::vertex<gl::pos2, gl::color4>;
+    //} line_batcher;
+};
+
+/*
 class application {
 public:
     explicit application(application_settings&& settings);
@@ -190,5 +308,6 @@ private:
         using vertex_t = typename gl::vertex<gl::pos2, gl::color4>;
     } line_batcher;
 };
+*/
 
 }

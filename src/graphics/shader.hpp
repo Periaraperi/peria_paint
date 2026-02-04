@@ -29,9 +29,9 @@ public:
     void set_int(const char* u_name, int val) const noexcept;
     void set_uint(const char* u_name, u32 val) const noexcept;
     void set_float(const char* u_name, float val) const noexcept;
-    void set_vec2(const char* u_name, const vec2& v) const noexcept;
-    void set_vec3(const char* u_name, const vec3& v) const noexcept;
-    void set_vec4(const char* u_name, const vec4& v) const noexcept;
+    void set_vec2(const char* u_name, const math::vec2f& v) const noexcept;
+    void set_vec3(const char* u_name, const math::vec3f& v) const noexcept;
+    void set_vec4(const char* u_name, const math::vec4f& v) const noexcept;
     void set_vec2(const char* u_name, float x, float y) const noexcept;
     void set_vec4(const char* u_name, const graphics::color& v) const noexcept;
     void set_mat4(const char* u_name, const math::mat4f& m, bool let_gl_transpose=true) const noexcept;

@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <sstream>
 #include <string>
+#include "math/vec.hpp"
 
 namespace peria::math {
 
@@ -37,7 +38,7 @@ public:
     { return data_[r*M + c]; }
 
     template <std::size_t U, std::size_t V>
-    [[nodiscard]] matrix<T, N, V> operator*(const matrix<T, U, V>& rhs) noexcept
+    [[nodiscard]] matrix<T, N, V> operator*(const matrix<T, U, V>& rhs) const noexcept
     {
         static_assert(M == U, "Columns of LHS should be equal to rows of RHS");
         matrix<T, N, V> res{T{}};
@@ -48,6 +49,17 @@ public:
                 }
             }
         }
+        return res;
+    }
+
+    [[nodiscard]] vec4<T> operator*(const vec4<T>& v) const noexcept
+    {
+        static_assert(M == 4, "Expected matrix with 4 columns and vector of 4 elements");
+        vec4<T> res {};
+        res.x = this->operator()(0, 0)*v.x+this->operator()(0, 1)*v.y+this->operator()(0, 2)*v.z+this->operator()(0, 3)*v.w;
+        res.y = this->operator()(1, 0)*v.x+this->operator()(1, 1)*v.y+this->operator()(1, 2)*v.z+this->operator()(1, 3)*v.w;
+        res.z = this->operator()(2, 0)*v.x+this->operator()(2, 1)*v.y+this->operator()(2, 2)*v.z+this->operator()(2, 3)*v.w;
+        res.w = this->operator()(3, 0)*v.x+this->operator()(3, 1)*v.y+this->operator()(3, 2)*v.z+this->operator()(3, 3)*v.w;
         return res;
     }
 
@@ -82,7 +94,7 @@ public:
     }
 
 private:
-    std::array<float, N*M> data_ {};
+    std::array<T, N*M> data_ {};
 };
 
 using mat4f = matrix<float, 4, 4>;
@@ -105,5 +117,8 @@ mat4f scale(float x, float y, float z) noexcept;
 
 [[nodiscard]]
 mat4f rotate(float x, float y, float z) noexcept;
+
+[[nodiscard]]
+mat4f inverse(const mat4f& m) noexcept;
 
 }

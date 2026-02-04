@@ -60,6 +60,15 @@ peria::math::vec4<T> screen_to_world(const peria::math::vec4<T>& pos, const peri
 float lerp(float a, float b, float t) noexcept
 { return a*(1.0f - t) + b*t; }
 
+[[nodiscard]]
+bool point_inside_rect(const peria::math::vec2f& point_to_check, const peria::math::vec2f& rect_lower_left, const peria::math::vec2f& rect_size) noexcept
+{
+    return point_to_check.x >= rect_lower_left.x && 
+           point_to_check.x <= rect_lower_left.x+rect_size.x &&
+           point_to_check.y >= rect_lower_left.y && 
+           point_to_check.y <= rect_lower_left.y+rect_size.y;
+}
+
 // Generate Catmull-Rom spline which will go through each point in points based on parameter t 
 [[nodiscard]]
 peria::brush_point get_point_on_path(const std::vector<peria::brush_point>& points, float t)
@@ -84,7 +93,7 @@ peria::brush_point get_point_on_path(const std::vector<peria::brush_point>& poin
     const float r {lerp(points[p1].r, points[p2].r, t)};
 
     return peria::brush_point {
-        0.5f * vec2{
+        0.5f * peria::math::vec2f{
             (c1*points[p0].p.x + c2*points[p1].p.x + c3*points[p2].p.x + c4*points[p3].p.x),
             (c1*points[p0].p.y + c2*points[p1].p.y + c3*points[p2].p.y + c4*points[p3].p.y)
         }, r
@@ -259,13 +268,21 @@ application::application(application_settings&& settings)
      circle_shader{"./assets/shaders/circle.vert", "./assets/shaders/circle.frag"},
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      line_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"},
-     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA32F)},
-            gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
-            static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, graphics::WHITE, ""},
-     transparent_canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA32F)},
-            gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
-            static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, graphics::WHITE, ""},
-     temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}}, {}, canvas.width, canvas.height}
+     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), 
+                                                     static_cast<int>(settings.window_height*0.75f),
+                                                     GL_RGBA32F)},
+            gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, 
+            {}, 
+            static_cast<int>(settings.window_width*0.75f), 
+            static_cast<int>(settings.window_height*0.75f), 
+            {}, 
+            {}, 
+            graphics::WHITE
+     }
+     //transparent_canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA32F)},
+     //       gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
+     //       static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, graphics::WHITE, ""},
+     //temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}}, {}, canvas.width, canvas.height}
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
@@ -346,23 +363,23 @@ application::application(application_settings&& settings)
         graphics::vao_configure<gl::pos2, gl::texture_coord>(canvas_vao, canvas_vbo, 0);
         graphics::vao_connect_ibo(canvas_vao, quad_ibo);
 
-        {
-            std::array<u32, MAX_PER_BATCH*6> line_indices;
-            for (int i{}, k{}; i<MAX_PER_BATCH*6; i+=6, k+=4) {
-                line_indices[static_cast<std::size_t>(i)] = static_cast<u32>(k);
-                line_indices[static_cast<std::size_t>(i+1)] = static_cast<u32>(k+1);
-                line_indices[static_cast<std::size_t>(i+2)] = static_cast<u32>(k+2);
+        //{
+        //    std::array<u32, MAX_PER_BATCH*6> line_indices;
+        //    for (int i{}, k{}; i<MAX_PER_BATCH*6; i+=6, k+=4) {
+        //        line_indices[static_cast<std::size_t>(i)] = static_cast<u32>(k);
+        //        line_indices[static_cast<std::size_t>(i+1)] = static_cast<u32>(k+1);
+        //        line_indices[static_cast<std::size_t>(i+2)] = static_cast<u32>(k+2);
 
-                line_indices[static_cast<std::size_t>(i+3)] = static_cast<u32>(k);
-                line_indices[static_cast<std::size_t>(i+4)] = static_cast<u32>(k+2);
-                line_indices[static_cast<std::size_t>(i+5)] = static_cast<u32>(k+3);
-            }
+        //        line_indices[static_cast<std::size_t>(i+3)] = static_cast<u32>(k);
+        //        line_indices[static_cast<std::size_t>(i+4)] = static_cast<u32>(k+2);
+        //        line_indices[static_cast<std::size_t>(i+5)] = static_cast<u32>(k+3);
+        //    }
 
-            graphics::buffer_allocate_data(line_vbo, MAX_PER_BATCH*4*gl::vertex<gl::pos2, gl::color4>::stride, GL_DYNAMIC_DRAW);
-            graphics::buffer_upload_data(line_ibo, line_indices, GL_STATIC_DRAW);
-            graphics::vao_configure<gl::pos2, gl::color4>(line_vao, line_vbo, 0);
-            graphics::vao_connect_ibo(line_vao, line_ibo);
-        }
+        //    graphics::buffer_allocate_data(line_vbo, MAX_PER_BATCH*4*gl::vertex<gl::pos2, gl::color4>::stride, GL_DYNAMIC_DRAW);
+        //    graphics::buffer_upload_data(line_ibo, line_indices, GL_STATIC_DRAW);
+        //    graphics::vao_configure<gl::pos2, gl::color4>(line_vao, line_vbo, 0);
+        //    graphics::vao_connect_ibo(line_vao, line_ibo);
+        //}
 
         {
             constexpr int line_count {4};
@@ -403,33 +420,33 @@ application::application(application_settings&& settings)
                 std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
             }
 
-            glNamedFramebufferTexture(transparent_canvas.buffer.id, GL_COLOR_ATTACHMENT0, transparent_canvas.texture.id, 0);
-            status = glCheckNamedFramebufferStatus(transparent_canvas.buffer.id, GL_FRAMEBUFFER);
-            if (status != GL_FRAMEBUFFER_COMPLETE) {
-                std::println("FrameBuffer with id {} is incomplete\n {}", transparent_canvas.buffer.id, status);
-            }
+            //glNamedFramebufferTexture(transparent_canvas.buffer.id, GL_COLOR_ATTACHMENT0, transparent_canvas.texture.id, 0);
+            //status = glCheckNamedFramebufferStatus(transparent_canvas.buffer.id, GL_FRAMEBUFFER);
+            //if (status != GL_FRAMEBUFFER_COMPLETE) {
+            //    std::println("FrameBuffer with id {} is incomplete\n {}", transparent_canvas.buffer.id, status);
+            //}
 
-            glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
-            status = glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER);
-            if (status != GL_FRAMEBUFFER_COMPLETE) {
-                std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
-            }
+            //glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+            //status = glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER);
+            //if (status != GL_FRAMEBUFFER_COMPLETE) {
+            //    std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+            //}
         }
 
         textured_quad_shader.set_int("u_canvas_texture", 0);
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
-        transparent_canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
-        canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
-        transparent_canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
+        //transparent_canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+        canvas.pos = 0.5f*peria::math::vec2f{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
+        //transparent_canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
         info.new_width = canvas.width;
         info.new_height = canvas.height;
-        transparent_canvas.width = canvas.width;
-        transparent_canvas.height = canvas.height;
+        //transparent_canvas.width = canvas.width;
+        //transparent_canvas.height = canvas.height;
     }
 
-    pen_.brush_points.reserve(2048);
+    //pen_.brush_points.reserve(2048);
     // times 4 because each line is represented as a quad which is 2 triangles with total of 4 verts
-    line_batcher.lines_data.reserve(MAX_PER_BATCH*4);
+    //line_batcher.lines_data.reserve(MAX_PER_BATCH*4);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -490,7 +507,7 @@ void application::run()
             }
             else if (ev.type == SDL_EVENT_MOUSE_MOTION) {
                 peria::graphics::set_relative_motion(ev.motion.xrel, -ev.motion.yrel);
-                info.mouse_moved = true;
+                input_manager_->set_mouse_moved();
             }
             else if (ev.type == SDL_EVENT_MOUSE_WHEEL && !imgui_.is_imgui_hovered()) {
                 const auto [mx, my] {input_manager_->get_mouse_gl()};
@@ -515,98 +532,96 @@ void application::run()
         ImGui::NewFrame();
         ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 
-        update(dt);
-        draw();
+        update_refactor(dt);
+        draw_refactor();
 
-        if (ImGui::BeginMainMenuBar()) {
-            if (ImGui::Button("save")) {
-                canvas.filename = graphics::write_to_png(canvas.texture, canvas.width, canvas.height, canvas.filename.c_str());
-            }
-            if (ImGui::BeginMenu("open")) {
-                const auto files {get_all_png_images()};
-                for (const auto& f:files) {
-                    if (ImGui::MenuItem(f.c_str())) {
-                        auto image {graphics::load_png(("./test/"+f).c_str())};
+        //if (ImGui::BeginMainMenuBar()) {
+        //    if (ImGui::Button("save")) {
+        //        canvas.filename = graphics::write_to_png(canvas.texture, canvas.width, canvas.height, canvas.filename.c_str());
+        //    }
+        //    if (ImGui::BeginMenu("open")) {
+        //        const auto files {get_all_png_images()};
+        //        for (const auto& f:files) {
+        //            if (ImGui::MenuItem(f.c_str())) {
+        //                auto image {graphics::load_png(("./test/"+f).c_str())};
 
-                        canvas.texture = std::move(image.texture);
-                        canvas.width = image.width;
-                        canvas.height = image.height;
-                        canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+        //                canvas.texture = std::move(image.texture);
+        //                canvas.width = image.width;
+        //                canvas.height = image.height;
+        //                canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
 
-                        glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
-                        auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
-                        if (status != GL_FRAMEBUFFER_COMPLETE) {
-                            std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
-                        }
+        //                glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
+        //                auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
+        //                if (status != GL_FRAMEBUFFER_COMPLETE) {
+        //                    std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
+        //                }
 
-                        canvas.filename = f.substr(0, f.size()-4);
-                        canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
-                        info.world_offset = {0, 0};
-                        zoom_scale = 1.0f;
-                    }
-                }
-                ImGui::EndMenu();
-            }
+        //                canvas.filename = f.substr(0, f.size()-4);
+        //                canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
+        //                info.world_offset = {0, 0};
+        //                zoom_scale = 1.0f;
+        //            }
+        //        }
+        //        ImGui::EndMenu();
+        //    }
 
-            if (ImGui::Button("tools")) {
-                if (imgui_.show_tools) imgui_.show_tools = false;
-                else                   imgui_.show_tools = true;
-            }
+        //    if (ImGui::Button("tools")) {
+        //        if (imgui_.show_tools) imgui_.show_tools = false;
+        //        else                   imgui_.show_tools = true;
+        //    }
 
-            ImGui::Text("Width %d", canvas.width);
-            ImGui::Text("Height %d", canvas.height);
+        //    ImGui::Text("Width %d", canvas.width);
+        //    ImGui::Text("Height %d", canvas.height);
 
-            ImGui::EndMainMenuBar();
-        }
+        //    ImGui::EndMainMenuBar();
+        //}
 
-        if (imgui_.show_tools) {
-            if (ImGui::Begin("tools")) {
-                if (ImGui::ColorPicker3("pen_brush_color", pen_.brush_color.data())) {}
-                if (ImGui::SliderFloat("pen_brush_size", &pen_.brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {}
-                if (ImGui::SliderFloat("eraser_radius", &eraser_.r, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {}
-                if (ImGui::Checkbox("selection", &info.in_selection_mode)) {
-                    if (info.in_selection_mode) {
-                        info.in_resize_mode = false;
-                    }
-                }
-                if (ImGui::Button("center")) {
-                    info.world_offset = {0, 0};
-                    zoom_scale = 1.0f;
-                    canvas.pos.x = static_cast<float>(app_settings_.window_width)*0.5f;
-                    canvas.pos.y = static_cast<float>(app_settings_.window_height)*0.5f;
-                }
-                if (ImGui::Checkbox("pen_brush", &imgui_.pen_selected)) {
-                    if (imgui_.pen_selected) {
-                        imgui_.eraser_selected = false;
-                        imgui_.bucket_selected = false;
-                    }
-                }
-                if (ImGui::Checkbox("eraser", &imgui_.eraser_selected)) {
-                    if (imgui_.eraser_selected) {
-                        imgui_.pen_selected = false;
-                        imgui_.bucket_selected = false;
-                    }
-                }
-                if (ImGui::Checkbox("bucket", &imgui_.bucket_selected)) {
-                    if (imgui_.bucket_selected) {
-                        imgui_.pen_selected = false;
-                        imgui_.eraser_selected = false;
-                    }
-                }
-            }
-            ImGui::End();
+        //if (imgui_.show_tools) {
+        //    if (ImGui::Begin("tools")) {
+        //        if (ImGui::ColorPicker3("pen_brush_color", pen_.brush_color.data())) {}
+        //        if (ImGui::SliderFloat("pen_brush_size", &pen_.brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {}
+        //        if (ImGui::SliderFloat("eraser_radius", &eraser_.r, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {}
+        //        if (ImGui::Checkbox("selection", &info.in_selection_mode)) {
+        //            if (info.in_selection_mode) {
+        //                info.in_resize_mode = false;
+        //            }
+        //        }
+        //        if (ImGui::Button("center")) {
+        //            info.world_offset = {0, 0};
+        //            zoom_scale = 1.0f;
+        //            canvas.pos.x = static_cast<float>(app_settings_.window_width)*0.5f;
+        //            canvas.pos.y = static_cast<float>(app_settings_.window_height)*0.5f;
+        //        }
+        //        if (ImGui::Checkbox("pen_brush", &imgui_.pen_selected)) {
+        //            if (imgui_.pen_selected) {
+        //                imgui_.eraser_selected = false;
+        //                imgui_.bucket_selected = false;
+        //            }
+        //        }
+        //        if (ImGui::Checkbox("eraser", &imgui_.eraser_selected)) {
+        //            if (imgui_.eraser_selected) {
+        //                imgui_.pen_selected = false;
+        //                imgui_.bucket_selected = false;
+        //            }
+        //        }
+        //        if (ImGui::Checkbox("bucket", &imgui_.bucket_selected)) {
+        //            if (imgui_.bucket_selected) {
+        //                imgui_.pen_selected = false;
+        //                imgui_.eraser_selected = false;
+        //            }
+        //        }
+        //    }
+        //    ImGui::End();
 
-            if (!imgui_.bucket_selected && !imgui_.eraser_selected) {
-                imgui_.pen_selected = true;
-            }
-        }
+        //    if (!imgui_.bucket_selected && !imgui_.eraser_selected) {
+        //        imgui_.pen_selected = true;
+        //    }
+        //}
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         SDL_GL_SwapWindow(sdl_initializer_.window);
-        info.prev_mouse_moved = info.mouse_moved;
-        info.mouse_moved = false;
         
         {
             std::string title {"peria_paint | "+std::to_string(elapsed_time)+" "+std::to_string(dt)};
@@ -620,6 +635,38 @@ void application::run()
     }
 }
 
+void application::update_refactor([[maybe_unused]]float dt)
+{
+    cam2d.update(window_projection);
+    
+    //const auto im {input_manager::instance()};
+    //const math::vec2f mouse_world {im->get_mouse_gl().x, im->get_mouse_gl().y};
+    //const math::vec2f canvas_world_lower_left {canvas.pos-math::vec2{canvas.width*0.5f, canvas.height*0.5f}};
+    //const auto inside_canvas {point_inside_rect(mouse_world, canvas_world_lower_left, {static_cast<float>(canvas.width), static_cast<float>(canvas.height)})};
+    //if (im->mouse_moving()) {
+    //    if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
+    //        //brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, pen_.brush_size*0.5f});
+    //    }
+    //}
+}
+
+void application::draw_refactor()
+{
+    graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
+    graphics::bind_frame_buffer_default();
+    graphics::clear_buffer_all(0, graphics::GREY, 1.0f, 0);
+
+    math::mat4f model {math::translate(canvas.pos.x, canvas.pos.y, 0.0f)*
+                       math::scale(canvas.width, canvas.height, 1.0f)};
+    
+    graphics::bind_vertex_array(canvas_vao);
+    textured_quad_shader.use_shader();
+    textured_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view*model);
+    textured_quad_shader.set_int("u_toggle", 1);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+}
+
+/*
 void application::update([[maybe_unused]]float dt)
 {
     const auto im {input_manager::instance()};
@@ -915,7 +962,9 @@ void application::update([[maybe_unused]]float dt)
         }
     }
 }
+*/
 
+/*
 void application::draw()
 {
     // Clear resized buffer and copy all contents from old to new.
@@ -1425,5 +1474,6 @@ void application::draw()
 
     }
 }
+*/
 
 }
