@@ -204,6 +204,18 @@ gl::texture2d create_texture2d(int w, int h, u32 internal_format) noexcept
     return texture;
 }
 
+gl::texture2d create_texture2d_from_color(const graphics::color& color) noexcept
+{
+    std::array<u8, 3> data{static_cast<u8>(color.r*255), static_cast<u8>(color.g*255), static_cast<u8>(color.b*255)};
+
+    gl::texture2d texture;
+    const auto w{1}, h{1};
+    glTextureStorage2D(texture.id, 1, GL_RGB8, w, h);
+    glTextureSubImage2D(texture.id, 0, 0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, data.data());
+    glGenerateTextureMipmap(texture.id);
+    return texture;
+}
+
 gl::sampler create_sampler(int min_filter, int mag_filter, int wrap_s, int wrap_t, int wrap_r, const color& border_color) noexcept
 {
     gl::sampler sampler;

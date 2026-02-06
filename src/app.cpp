@@ -229,8 +229,10 @@ application::application(application_settings&& settings)
      imgui_{sdl_initializer_.window, sdl_initializer_.context, "#version 460"},
      circle_shader{"./assets/shaders/circle.vert", "./assets/shaders/circle.frag"},
      circle_batcher_shader{"./assets/shaders/circle_batcher.vert", "./assets/shaders/circle_batcher.frag"},
+     eraser_shader{"./assets/shaders/circle.vert", "./assets/shaders/eraser.frag"},
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      line_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"},
+     canvas_bg{gl::texture2d{graphics::create_texture2d_from_color(graphics::WHITE)}},
      canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), 
                                                      static_cast<int>(settings.window_height*0.75f),
                                                      GL_RGBA32F)},
@@ -239,8 +241,7 @@ application::application(application_settings&& settings)
             static_cast<int>(settings.window_width*0.75f), 
             static_cast<int>(settings.window_height*0.75f), 
             {}, 
-            {}, 
-            graphics::WHITE
+            {}
      }
      //transparent_canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA32F)},
      //       gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
@@ -253,7 +254,6 @@ application::application(application_settings&& settings)
     {
         graphics::init_circle_batcher();
     }
-
 
     int mx_sz {};
     glGetIntegerv(GL_MAX_TEXTURE_SIZE, &mx_sz);
@@ -423,7 +423,7 @@ application::application(application_settings&& settings)
     // just clear canvas to default color before doing anything
     graphics::bind_frame_buffer(canvas.buffer);
     graphics::set_viewport(0, 0, canvas.width, canvas.height);
-    graphics::clear_buffer_color(canvas.buffer.id, canvas.bg_color);
+    graphics::clear_buffer_color(canvas.buffer.id, graphics::color{0.0f, 0.0f, 0.0f, 0.0f});
 }
 
 application::~application()
@@ -594,6 +594,12 @@ void application::run()
 void application::update_refactor([[maybe_unused]]float dt)
 {
     const auto im {input_manager::instance()};
+    if (im->key_pressed(SDL_SCANCODE_B)) {
+        mode = app_mode::DRAW;
+    }
+    if (im->key_pressed(SDL_SCANCODE_E)) {
+        mode = app_mode::RESIZE;
+    }
 
     cam2d.update(window_projection);
     
@@ -602,7 +608,6 @@ void application::update_refactor([[maybe_unused]]float dt)
     const math::vec2f canvas_world_lower_left {canvas.pos-math::vec2{canvas.width*0.5f, canvas.height*0.5f}};
     const auto inside_canvas {point_inside_rect(mouse_world, canvas_world_lower_left, {static_cast<float>(canvas.width), static_cast<float>(canvas.height)})};
 
-    if (mode == app_mode::DRAW) {
         if (im->mouse_moving()) {
             if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
                 brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
@@ -622,7 +627,14 @@ void application::update_refactor([[maybe_unused]]float dt)
                 info.drawing_finished = true;
             }
         }
-    }
+    //}
+    //else {
+    //    if (!im->mouse_moving() && im->mouse_pressed(mouse_button::LEFT) && inside_canvas) {
+    //        eraser_pos = math::vec2f{mouse_world-canvas_world_lower_left};
+    //        info.drawing = true;
+    //        info.drawing_finished = true;
+    //    }
+    //}
 }
 
 void application::draw_refactor()
@@ -641,7 +653,12 @@ void application::draw_refactor()
     //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
     if (info.drawing) {
-        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        if (mode == app_mode::DRAW) {
+            glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        }
+        else {
+            glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+        }
         graphics::bind_frame_buffer(canvas.buffer);
         graphics::set_viewport(0, 0, canvas.width, canvas.height);
 
@@ -663,6 +680,19 @@ void application::draw_refactor()
         //}
 
         //std::vector<math::vec2f> samples;
+        //if (mode != app_mode::DRAW) {
+        //    glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+        //    graphics::bind_vertex_array(circle_vao);
+
+        //    math::mat4f m {math::translate(eraser_pos.x, eraser_pos.y, 0.0f)*
+        //                   math::scale(2.0f*info.brush_size, 2.0f*info.brush_size, 1.0f)};
+
+        //    eraser_shader.use_shader();
+        //    eraser_shader.set_mat4("u_mvp", canvas.projection*m);
+        //    eraser_shader.set_float("u_radius", info.brush_size);
+        //    eraser_shader.set_vec2("u_center", eraser_pos);
+        //    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        //}
 
         // Special case where we don't move mouse and only draw a point.
         // No interpolation needed. Just draw single brush point.
@@ -727,6 +757,10 @@ void application::draw_refactor()
         graphics::bind_vertex_array(canvas_vao);
         textured_quad_shader.use_shader();
         textured_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view*canvas_world_model);
+
+        graphics::bind_texture_and_sampler(canvas_bg, canvas.sampler, 0);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
         graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     }

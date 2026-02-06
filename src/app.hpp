@@ -121,8 +121,11 @@ private:
 
     gl::shader circle_shader;
     gl::shader circle_batcher_shader;
+    gl::shader eraser_shader;
     gl::shader textured_quad_shader;
     gl::shader line_shader;
+
+    gl::texture2d canvas_bg;
 
     math::mat4f window_projection;
     math::camera2d cam2d;
@@ -141,12 +144,12 @@ private:
         int height {};
         math::vec2f pos {};
         math::mat4f projection;
-        graphics::color bg_color;
 
         //std::string filename {};
     } canvas; //, transparent_canvas;
 
     std::vector<math::vec2f> brush_points;
+    math::vec2f eraser_pos;
 
     //struct temp_canvas {
     //    gl::texture2d texture;
