@@ -109,7 +109,7 @@ void buffer_upload_subdata(const gl::named_buffer& buffer, std::size_t buffer_of
 
 void init_circle_batcher(u32 max_per_batch /*8192*/)
 {
-    circle_batcher.max_per_batch = max_per_batch;
+    circle_batcher.max_per_batch = (i32)max_per_batch;
     circle_batcher.vao = std::make_unique<gl::vertex_array>();
     circle_batcher.vbo = std::make_unique<gl::named_buffer>();
     circle_batcher.ibo = std::make_unique<gl::named_buffer>();
@@ -130,6 +130,7 @@ void init_circle_batcher(u32 max_per_batch /*8192*/)
     buffer_upload_data(*circle_batcher.ibo, indices, GL_STATIC_DRAW);
 
     vao_configure<gl::pos2, gl::color3, gl::pos2, gl::attr<float, 2>>(*circle_batcher.vao, *circle_batcher.vbo, 0);
+    vao_connect_ibo(*circle_batcher.vao, *circle_batcher.ibo);
 }
 
 void draw_circles(const std::vector<circle>& circles, const gl::shader& shader)
@@ -147,7 +148,7 @@ void draw_circles(const std::vector<circle>& circles, const gl::shader& shader)
     
     for (i32 i{}; i<iterations; ++i) {
         for (i32 j{}; j<circle_batcher.max_per_batch; ++j) {
-            const std::size_t k {static_cast<size_t>(i*circle_batcher.max_per_batch + j)};
+            const std::size_t k {static_cast<std::size_t>(i*circle_batcher.max_per_batch + j)};
             const auto& [p, c, r] {circles[k]};
             circle_batcher.vertex_data[4*(u32)j + 0] = {{p.x+r, p.y-r}, {c.x, c.y, c.z}, {p.x, p.y}, {r, r}};
             circle_batcher.vertex_data[4*(u32)j + 1] = {{p.x+r, p.y+r}, {c.x, c.y, c.z}, {p.x, p.y}, {r, r}};
@@ -161,7 +162,7 @@ void draw_circles(const std::vector<circle>& circles, const gl::shader& shader)
     }
     if (leftover > 0) {
         for (i32 j{}; j<leftover; ++j) {
-            const std::size_t k {static_cast<size_t>(iterations*circle_batcher.max_per_batch + j)};
+            const std::size_t k {static_cast<std::size_t>(iterations*circle_batcher.max_per_batch + j)};
             const auto& [p, c, r] {circles[k]};
             circle_batcher.vertex_data[4*(u32)j + 0] = {{p.x+r, p.y-r}, {c.x, c.y, c.z}, {p.x, p.y}, {r, r}};
             circle_batcher.vertex_data[4*(u32)j + 1] = {{p.x+r, p.y+r}, {c.x, c.y, c.z}, {p.x, p.y}, {r, r}};

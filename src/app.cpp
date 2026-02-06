@@ -593,9 +593,10 @@ void application::run()
 
 void application::update_refactor([[maybe_unused]]float dt)
 {
+    const auto im {input_manager::instance()};
+
     cam2d.update(window_projection);
     
-    const auto im {input_manager::instance()};
     const math::vec2f mouse_screen {im->get_mouse_gl().x, im->get_mouse_gl().y};
     const math::vec2f mouse_world {cam2d.screen_to_world(mouse_screen, window_projection)};
     const math::vec2f canvas_world_lower_left {canvas.pos-math::vec2{canvas.width*0.5f, canvas.height*0.5f}};
@@ -662,16 +663,38 @@ void application::draw_refactor()
         //}
 
         //std::vector<math::vec2f> samples;
-        std::vector<graphics::circle> samples;
-        for (float t{}; t<static_cast<float>(brush_points.size())-3.0f; t+=0.01f) {
-            samples.emplace_back(graphics::circle{get_point_on_path(brush_points, t), {0.0f, 0.0f, 0.0f}, info.brush_size});
+
+        // Special case where we don't move mouse and only draw a point.
+        // No interpolation needed. Just draw single brush point.
+        if (brush_points.size() == 1 && info.drawing_finished) {
+            graphics::bind_vertex_array(circle_vao);
+
+            math::mat4f m {math::translate(brush_points.front().x, brush_points.front().y, 0.0f)*
+                           math::scale(2.0f*info.brush_size, 2.0f*info.brush_size, 1.0f)};
+
+            circle_shader.use_shader();
+            circle_shader.set_int("u_is_ring", 0);
+            circle_shader.set_mat4("u_mvp", canvas.projection*m);
+            circle_shader.set_float("u_radius", info.brush_size);
+            circle_shader.set_vec2("u_center", brush_points.front());
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
+        else if (brush_points.size() == 2 || brush_points.size() == 3) {
+            // Handle special case where stroke control points have more than a single point
+            // and less than the amount needed for spline interpolation.
+            // Draw a single line through them.
+        }
+        else if (brush_points.size() >= 4) {
+            const std::vector<math::vec2f> ps {brush_points[brush_points.size()-1], brush_points[brush_points.size()-2], brush_points[brush_points.size()-3], brush_points[brush_points.size()-4]};
+            std::vector<graphics::circle> samples;
+            for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=0.1f) {
+                samples.emplace_back(graphics::circle{get_point_on_path(ps, t), {0.0f, 0.0f, 0.0f}, info.brush_size});
+            }
+            ImGui::Text("%zu", samples.size());
 
-        ImGui::Text("%zu", samples.size());
-
-        circle_batcher_shader.use_shader();
-        circle_batcher_shader.set_mat4("u_mvp", canvas.projection);
-        graphics::draw_circles(samples, circle_batcher_shader);
+            circle_batcher_shader.set_mat4("u_mvp", canvas.projection);
+            graphics::draw_circles(samples, circle_batcher_shader);
+        }
 
         //for (std::size_t i{}; i<samples.size(); ++i) {
         //    const auto& pos {samples[i]};
@@ -688,7 +711,6 @@ void application::draw_refactor()
             info.drawing = false;
             brush_points.clear();
         }
-
     }
 
     // Everything below is done in main framebuffer
