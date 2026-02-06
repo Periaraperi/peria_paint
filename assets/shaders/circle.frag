@@ -5,17 +5,17 @@ out vec4 final_color;
 uniform float u_radius2;
 uniform float u_radius;
 
-uniform vec2 u_center_world;
+uniform vec2 u_center;
 uniform vec4 u_color;
 
-uniform int u_is_ring;
+uniform bool u_is_ring;
 
 void main()
 {
     vec2 p = gl_FragCoord.xy;
-    p -= u_center_world;
+    p -= u_center;
     float plen = length(p);
-    if (u_is_ring == 1) {
+    if (u_is_ring) {
         float s1 = 1.0f - step(u_radius, plen);
         float s2 = step(u_radius2, plen);
         final_color = vec4(u_color.rgb*s1*s2, s1*s2);

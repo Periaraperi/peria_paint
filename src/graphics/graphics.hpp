@@ -10,10 +10,17 @@
 
 #include "gl_entities.hpp"
 #include "color.hpp"
+#include "shader.hpp"
 
 using u32 = std::uint32_t;
 
 namespace peria::graphics {
+
+struct circle {
+    math::vec2f center {};
+    math::vec3f color  {};
+    float       radius {};
+};
 
 struct screen_size {
     int w {};
@@ -89,6 +96,16 @@ void vao_connect_ibo(const gl::vertex_array& vao, const gl::named_buffer& ibo) n
 void buffer_allocate_data(const gl::named_buffer& buffer, std::size_t bytes, u32 usage) noexcept;
 
 void buffer_upload_subdata(const gl::named_buffer& buffer, std::size_t buffer_offset, std::size_t data_size, const void* data) noexcept;
+
+// batcher initialization calls
+
+// initializes batcher structure to render circles in a batched manner.
+// call this only once during application initialization
+void init_circle_batcher(u32 max_per_batch = 8192);
+
+// batched drawing routines
+
+void draw_circles(const std::vector<circle>& circles, const gl::shader& shader);
 
 // clears frame buffer's color, depth, and stencil values.
 void clear_buffer_all(u32 fbo,

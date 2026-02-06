@@ -63,9 +63,13 @@ public:
     [[nodiscard]]
     bool mouse_moved_previous_frame() const noexcept;
 
+    [[nodiscard]]
+    float get_mouse_wheel_scroll_amount() const noexcept;
+
     void update_prev_state();
     void update_mouse() noexcept;
     void set_mouse_moved() noexcept;
+    void set_mouse_wheel_motion(float amount) noexcept;
 private:
     int keys_length_;
     const bool* keyboard_state_;
@@ -79,6 +83,8 @@ private:
 
     bool mouse_moved_ {false};
     bool prev_mouse_moved_ {false};
+
+    float mouse_wheel_scroll_amount_ {};
 
     static inline input_manager* instance_ptr_ {nullptr};
 

@@ -24,38 +24,6 @@ namespace {
 
 constexpr int MAX_FPS {500};
 
-float zoom_scale {1.0f};
-
-template<typename T>
-[[nodiscard]]
-peria::math::vec2<T> world_to_screen(const peria::math::vec2<T>& pos, const peria::math::vec2<T>& world_offset) noexcept
-{ return (pos + world_offset)*zoom_scale; }
-
-template<typename T>
-[[nodiscard]]
-peria::math::vec2<T> screen_to_world(const peria::math::vec2<T>& pos, const peria::math::vec2<T>& world_offset) noexcept
-{ return ((pos * (1.0f/zoom_scale)) - world_offset); }
-
-template<typename T>
-[[nodiscard]]
-peria::math::vec3<T> world_to_screen(const peria::math::vec3<T>& pos, const peria::math::vec3<T>& world_offset) noexcept
-{ return (pos + world_offset)*zoom_scale; }
-
-template<typename T>
-[[nodiscard]]
-peria::math::vec3<T> screen_to_world(const peria::math::vec3<T>& pos, const peria::math::vec3<T>& world_offset) noexcept
-{ return ((pos * (1.0f/zoom_scale)) - world_offset); }
-
-template<typename T>
-[[nodiscard]]
-peria::math::vec4<T> world_to_screen(const peria::math::vec4<T>& pos, const peria::math::vec4<T>& world_offset) noexcept
-{ return (pos + world_offset)*zoom_scale; }
-
-template<typename T>
-[[nodiscard]]
-peria::math::vec4<T> screen_to_world(const peria::math::vec4<T>& pos, const peria::math::vec4<T>& world_offset) noexcept
-{ return ((pos * (1.0f/zoom_scale)) - world_offset); }
-
 [[nodiscard]]
 float lerp(float a, float b, float t) noexcept
 { return a*(1.0f - t) + b*t; }
@@ -71,7 +39,7 @@ bool point_inside_rect(const peria::math::vec2f& point_to_check, const peria::ma
 
 // Generate Catmull-Rom spline which will go through each point in points based on parameter t 
 [[nodiscard]]
-peria::brush_point get_point_on_path(const std::vector<peria::brush_point>& points, float t)
+peria::math::vec2f get_point_on_path(const std::vector<peria::math::vec2f>& points, float t)
 {
     // indices of 2 control points and 2 points on a curve
     const std::size_t p1 {static_cast<std::size_t>(t)+1};
@@ -90,14 +58,8 @@ peria::brush_point get_point_on_path(const std::vector<peria::brush_point>& poin
     const float c3 {-3.0f*ttt + 4.0f*tt + t};
     const float c4 {ttt-tt};
 
-    const float r {lerp(points[p1].r, points[p2].r, t)};
-
-    return peria::brush_point {
-        0.5f * peria::math::vec2f{
-            (c1*points[p0].p.x + c2*points[p1].p.x + c3*points[p2].p.x + c4*points[p3].p.x),
-            (c1*points[p0].p.y + c2*points[p1].p.y + c3*points[p2].p.y + c4*points[p3].p.y)
-        }, r
-    };
+    return 0.5f * peria::math::vec2f{c1*points[p0].x + c2*points[p1].x + c3*points[p2].x + c4*points[p3].x,
+                                     c1*points[p0].y + c2*points[p1].y + c3*points[p2].y + c4*points[p3].y};
 }
 
 [[nodiscard]]
@@ -266,6 +228,7 @@ application::application(application_settings&& settings)
      sdl_initializer_{app_settings_},
      imgui_{sdl_initializer_.window, sdl_initializer_.context, "#version 460"},
      circle_shader{"./assets/shaders/circle.vert", "./assets/shaders/circle.frag"},
+     circle_batcher_shader{"./assets/shaders/circle_batcher.vert", "./assets/shaders/circle_batcher.frag"},
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      line_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"},
      canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), 
@@ -286,6 +249,12 @@ application::application(application_settings&& settings)
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
+    // initialize batchers
+    {
+        graphics::init_circle_batcher();
+    }
+
+
     int mx_sz {};
     glGetIntegerv(GL_MAX_TEXTURE_SIZE, &mx_sz);
     std::println("MAX TEX SIZE {}", mx_sz);
@@ -438,8 +407,8 @@ application::application(application_settings&& settings)
         //transparent_canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
         canvas.pos = 0.5f*peria::math::vec2f{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
         //transparent_canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
-        info.new_width = canvas.width;
-        info.new_height = canvas.height;
+        //info.new_width = canvas.width;
+        //info.new_height = canvas.height;
         //transparent_canvas.width = canvas.width;
         //transparent_canvas.height = canvas.height;
     }
@@ -510,20 +479,7 @@ void application::run()
                 input_manager_->set_mouse_moved();
             }
             else if (ev.type == SDL_EVENT_MOUSE_WHEEL && !imgui_.is_imgui_hovered()) {
-                const auto [mx, my] {input_manager_->get_mouse_gl()};
-                auto mouse_world {screen_to_world({mx, my}, info.world_offset)};
-
-                if (ev.wheel.y > 0.0f) {
-                    zoom_scale *= 2.0f;
-                    zoom_scale = std::min(zoom_scale, 512.0f);
-                }
-                if (ev.wheel.y < 0.0f) {
-                    zoom_scale *= 0.5f;
-                    zoom_scale = std::max(zoom_scale, 0.01f);
-                }
-                auto mouse_world_after_zoom {screen_to_world({mx, my}, info.world_offset)};
-
-                info.world_offset += (mouse_world_after_zoom - mouse_world);
+                input_manager_->set_mouse_wheel_motion(ev.wheel.y);
             }
         }
 
@@ -639,31 +595,119 @@ void application::update_refactor([[maybe_unused]]float dt)
 {
     cam2d.update(window_projection);
     
-    //const auto im {input_manager::instance()};
-    //const math::vec2f mouse_world {im->get_mouse_gl().x, im->get_mouse_gl().y};
-    //const math::vec2f canvas_world_lower_left {canvas.pos-math::vec2{canvas.width*0.5f, canvas.height*0.5f}};
-    //const auto inside_canvas {point_inside_rect(mouse_world, canvas_world_lower_left, {static_cast<float>(canvas.width), static_cast<float>(canvas.height)})};
-    //if (im->mouse_moving()) {
-    //    if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
-    //        //brush_points.emplace_back(brush_point{{world_mpos.x-canvas_lower_left_x, world_mpos.y-canvas_lower_left_y}, pen_.brush_size*0.5f});
-    //    }
-    //}
+    const auto im {input_manager::instance()};
+    const math::vec2f mouse_screen {im->get_mouse_gl().x, im->get_mouse_gl().y};
+    const math::vec2f mouse_world {cam2d.screen_to_world(mouse_screen, window_projection)};
+    const math::vec2f canvas_world_lower_left {canvas.pos-math::vec2{canvas.width*0.5f, canvas.height*0.5f}};
+    const auto inside_canvas {point_inside_rect(mouse_world, canvas_world_lower_left, {static_cast<float>(canvas.width), static_cast<float>(canvas.height)})};
+
+    if (mode == app_mode::DRAW) {
+        if (im->mouse_moving()) {
+            if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
+                brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
+                info.drawing = true;
+                info.drawing_finished = false;
+            }
+            if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
+                brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
+                info.drawing = true;
+                info.drawing_finished = true;
+            }
+        }
+        else {
+            if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
+                brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
+                info.drawing = true;
+                info.drawing_finished = true;
+            }
+        }
+    }
 }
 
 void application::draw_refactor()
 {
-    graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
-    graphics::bind_frame_buffer_default();
-    graphics::clear_buffer_all(0, graphics::GREY, 1.0f, 0);
+    ImGui::Text("%zu", brush_points.size());
+    //graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
+    //graphics::bind_frame_buffer_default();
+    //graphics::clear_buffer_all(0, graphics::GREY, 1.0f, 0);
 
-    math::mat4f model {math::translate(canvas.pos.x, canvas.pos.y, 0.0f)*
-                       math::scale(canvas.width, canvas.height, 1.0f)};
-    
-    graphics::bind_vertex_array(canvas_vao);
-    textured_quad_shader.use_shader();
-    textured_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view*model);
-    textured_quad_shader.set_int("u_toggle", 1);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+    //math::mat4f model {math::translate(canvas.pos.x, canvas.pos.y, 0.0f)*
+    //                   math::scale(canvas.width, canvas.height, 1.0f)};
+    //
+    //graphics::bind_vertex_array(canvas_vao);
+    //textured_quad_shader.use_shader();
+    //textured_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view*model);
+    //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+    if (info.drawing) {
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        graphics::bind_frame_buffer(canvas.buffer);
+        graphics::set_viewport(0, 0, canvas.width, canvas.height);
+
+        //graphics::bind_vertex_array(circle_vao);
+        //circle_shader.use_shader();
+        //circle_shader.set_int("u_is_ring", 0);
+
+        //circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
+
+        // Draw brush stroke points
+        //for (std::size_t i{}; i<brush_points.size(); ++i) {
+        //    const auto& pos {brush_points[i]};
+        //    math::mat4f m {math::translate(pos.x, pos.y, 0.0f)*
+        //                   math::scale(2.0f*info.brush_size, 2.0f*info.brush_size, 1.0f)};
+        //    circle_shader.set_mat4("u_mvp", canvas.projection*m);
+        //    circle_shader.set_float("u_radius", info.brush_size);
+        //    circle_shader.set_vec2("u_center", pos);
+        //    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        //}
+
+        //std::vector<math::vec2f> samples;
+        std::vector<graphics::circle> samples;
+        for (float t{}; t<static_cast<float>(brush_points.size())-3.0f; t+=0.01f) {
+            samples.emplace_back(graphics::circle{get_point_on_path(brush_points, t), {0.0f, 0.0f, 0.0f}, info.brush_size});
+        }
+
+        ImGui::Text("%zu", samples.size());
+
+        circle_batcher_shader.use_shader();
+        circle_batcher_shader.set_mat4("u_mvp", canvas.projection);
+        graphics::draw_circles(samples, circle_batcher_shader);
+
+        //for (std::size_t i{}; i<samples.size(); ++i) {
+        //    const auto& pos {samples[i]};
+        //    math::mat4f m {math::translate(pos.x, pos.y, 0.0f)*
+        //                   math::scale(2*info.brush_size, 2*info.brush_size, 1.0f)};
+        //    circle_shader.set_mat4("u_mvp", canvas.projection*m);
+        //    circle_shader.set_float("u_radius", info.brush_size);
+        //    circle_shader.set_vec2("u_center", pos);
+        //    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        //}
+
+        if (info.drawing_finished) {
+            info.drawing_finished = false;
+            info.drawing = false;
+            brush_points.clear();
+        }
+
+    }
+
+    // Everything below is done in main framebuffer
+    // POST canvas rendering / final pass
+    {
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
+        graphics::bind_frame_buffer_default();
+        graphics::clear_buffer_all(0, graphics::GREY, 1.0f, 0);
+
+        math::mat4f canvas_world_model {math::translate(canvas.pos.x, canvas.pos.y, 0.0f)*
+                                        math::scale(canvas.width, canvas.height, 1.0f)};
+
+        graphics::bind_vertex_array(canvas_vao);
+        textured_quad_shader.use_shader();
+        textured_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view*canvas_world_model);
+        graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+    }
 }
 
 /*

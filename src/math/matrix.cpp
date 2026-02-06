@@ -80,6 +80,7 @@ mat4f rotate(float angle_x /*in radians*/, float angle_y, float angle_z) noexcep
 
 mat4f inverse(const mat4f& m) noexcept
 {
+    // taken from GLM source code.
     float Coef00 = m(2, 2) * m(3, 3) - m(3, 2) * m(2, 3);
     float Coef02 = m(1, 2) * m(3, 3) - m(3, 2) * m(1, 3);
     float Coef03 = m(1, 2) * m(2, 3) - m(2, 2) * m(1, 3);

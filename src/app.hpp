@@ -120,6 +120,7 @@ private:
     gl::named_buffer line_resize_ibo;
 
     gl::shader circle_shader;
+    gl::shader circle_batcher_shader;
     gl::shader textured_quad_shader;
     gl::shader line_shader;
 
@@ -129,7 +130,7 @@ private:
     enum class app_mode {
         DRAW = 0,
         RESIZE = 1
-    } app_mode {app_mode::DRAW};
+    } mode {app_mode::DRAW};
 
     struct canvas {
         gl::texture2d texture;
@@ -145,7 +146,7 @@ private:
         //std::string filename {};
     } canvas; //, transparent_canvas;
 
-    std::vector<brush_point> brush_points;
+    std::vector<math::vec2f> brush_points;
 
     //struct temp_canvas {
     //    gl::texture2d texture;
@@ -165,16 +166,14 @@ private:
     //} eraser_;
 
     struct info {
-        math::vec2f world_offset {};
-        float pan_speed {50.0f};
-        float resize_speed {100.0f};
-        bool should_draw {false};
-        bool should_empty {false};
-        bool resized {true};
-        bool resizing {false};
-        int new_width {};
-        int new_height {};
-        int resize_button_index {-1};
+        bool drawing          {false};
+        bool drawing_finished {false};
+        float brush_size {10.0f};
+        //bool resized {true};
+        //bool resizing {false};
+        //int new_width {};
+        //int new_height {};
+        //int resize_button_index {-1};
     } info;
 
     //struct rect_selection {
