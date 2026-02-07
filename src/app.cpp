@@ -235,13 +235,13 @@ application::application(application_settings&& settings)
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      line_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"},
      canvas_bg{gl::texture2d{graphics::create_texture2d_from_color(graphics::WHITE)}},
-     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), 
-                                                     static_cast<int>(settings.window_height*0.75f),
+     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(5000), 
+                                                     static_cast<int>(5000),
                                                      GL_RGBA32F)},
             gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, 
             {}, 
-            static_cast<int>(settings.window_width*0.75f), 
-            static_cast<int>(settings.window_height*0.75f), 
+            static_cast<int>(5000), 
+            static_cast<int>(5000), 
             {}, 
             {}
      }
@@ -596,6 +596,8 @@ void application::run()
 
 void application::update_refactor([[maybe_unused]]float dt)
 {
+    ImGui::SliderFloat("AA", &info.aa, 0.0f, 30.0f);
+    ImGui::SliderFloat("brushSize", &info.brush_size, 1.0f, 30.0f);
     const auto im {input_manager::instance()};
     if (im->key_pressed(SDL_SCANCODE_D)) {
         debugging = !debugging;
@@ -605,6 +607,13 @@ void application::update_refactor([[maybe_unused]]float dt)
     }
     if (im->key_pressed(SDL_SCANCODE_E)) {
         mode = app_mode::RESIZE;
+    }
+
+    if (im->key_pressed(SDL_SCANCODE_Q)) {
+        info.aa += 1.0f;
+    }
+    if (im->key_pressed(SDL_SCANCODE_W)) {
+        info.aa -= 1.0f;
     }
 
     cam2d.update(window_projection);
@@ -740,6 +749,7 @@ void application::draw_refactor()
             circle_shader.set_float("u_radius", info.brush_size);
             circle_shader.set_vec2("u_center", brush_points.front());
             circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
+            circle_shader.set_float("u_aa", info.aa);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
         else if (brush_points.size() == 2 || brush_points.size() == 3) {
@@ -748,14 +758,16 @@ void application::draw_refactor()
             // Draw a single line through them.
         }
         else if (brush_points.size() >= 4 && input_manager::instance()->mouse_moving()) {
-            const std::vector<math::vec2f> ps {brush_points[brush_points.size()-1], brush_points[brush_points.size()-2], brush_points[brush_points.size()-3], brush_points[brush_points.size()-4]};
+            std::vector<math::vec2f> ps {brush_points[brush_points.size()-1], brush_points[brush_points.size()-2], brush_points[brush_points.size()-3], brush_points[brush_points.size()-4]};
+            std::reverse(ps.begin(), ps.end());
             std::vector<graphics::circle> samples;
-            for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=0.1f) {
+            for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=0.01f) {
                 samples.emplace_back(graphics::circle{get_point_on_path(ps, t), {0.0f, 0.0f, 0.0f}, info.brush_size});
             }
             ImGui::Text("%zu", samples.size());
 
             circle_batcher_shader.set_mat4("u_mvp", canvas.projection);
+            circle_batcher_shader.set_float("u_aa", info.aa);
             graphics::draw_circles(samples, circle_batcher_shader);
             //std::vector<graphics::quad> samples;
             //for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=0.1f) {
@@ -764,15 +776,20 @@ void application::draw_refactor()
             //colored_quad_shader.set_mat4("u_mvp", canvas.projection);
             //graphics::draw_quads(samples, colored_quad_shader);
 
-            // treat lines as rotated quads where thickness == quad height
-            std::vector<graphics::line> lines;
-            for (std::size_t i{1}; i<samples.size(); ++i) {
-                lines.emplace_back(graphics::line{samples[i-1].center, samples[i].center, info.brush_size, {0.0f, 0.0f, 0.0f}});
-            }
-            ImGui::Text("lines - %zu", lines.size());
+            // SINCE I OPTIMIZED RENDERING BY ONLY TAKING LAST 4 CONTROL POINTS,
+            // I CAN USE A LOT SMALLER STEP AND NO NEED FOR LINES?????
 
-            colored_quad_shader.set_mat4("u_mvp", canvas.projection);
-            graphics::draw_lines(lines, colored_quad_shader);
+            // treat lines as rotated quads where thickness == quad height
+            //std::vector<graphics::line> lines;
+            //// doesn't seem to help much
+            //if (brush_points.size() > 4) lines.emplace_back(graphics::line{brush_points[brush_points.size()-5], samples.front().center, info.brush_size, {0.0f, 1.0f, 0.0f}});
+            //for (std::size_t i{1}; i<samples.size(); ++i) {
+            //    lines.emplace_back(graphics::line{samples[i-1].center, samples[i].center, info.brush_size, {0.0f, 1.0f, 0.0f}});
+            //}
+            //ImGui::Text("lines - %zu", lines.size());
+
+            //colored_quad_shader.set_mat4("u_mvp", canvas.projection);
+            //graphics::draw_lines(lines, colored_quad_shader);
         }
 
         if (info.drawing_finished) {

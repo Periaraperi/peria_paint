@@ -98,7 +98,6 @@ private:
     application_settings app_settings_;
     sdl::sdl_initializer sdl_initializer_;
     imgui::imgui imgui_;
-
     void update_refactor(float dt);
     void draw_refactor();
 
@@ -173,6 +172,7 @@ private:
         bool drawing          {false};
         bool drawing_finished {false};
         float brush_size {5.0f};
+        float aa {1.0f};
         //bool resized {true};
         //bool resizing {false};
         //int new_width {};
