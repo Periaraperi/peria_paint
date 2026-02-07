@@ -121,6 +121,7 @@ private:
 
     gl::shader circle_shader;
     gl::shader circle_batcher_shader;
+    gl::shader colored_quad_shader;
     gl::shader eraser_shader;
     gl::shader textured_quad_shader;
     gl::shader line_shader;
@@ -171,7 +172,7 @@ private:
     struct info {
         bool drawing          {false};
         bool drawing_finished {false};
-        float brush_size {10.0f};
+        float brush_size {5.0f};
         //bool resized {true};
         //bool resizing {false};
         //int new_width {};

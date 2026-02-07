@@ -23,6 +23,7 @@
 namespace {
 
 constexpr int MAX_FPS {500};
+bool debugging {};
 
 [[nodiscard]]
 float lerp(float a, float b, float t) noexcept
@@ -229,6 +230,7 @@ application::application(application_settings&& settings)
      imgui_{sdl_initializer_.window, sdl_initializer_.context, "#version 460"},
      circle_shader{"./assets/shaders/circle.vert", "./assets/shaders/circle.frag"},
      circle_batcher_shader{"./assets/shaders/circle_batcher.vert", "./assets/shaders/circle_batcher.frag"},
+     colored_quad_shader{"./assets/shaders/quad_colored.vert", "./assets/shaders/quad_colored.frag"},
      eraser_shader{"./assets/shaders/circle.vert", "./assets/shaders/eraser.frag"},
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      line_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"},
@@ -253,6 +255,7 @@ application::application(application_settings&& settings)
     // initialize batchers
     {
         graphics::init_circle_batcher();
+        graphics::init_quad_batcher();
     }
 
     int mx_sz {};
@@ -594,6 +597,9 @@ void application::run()
 void application::update_refactor([[maybe_unused]]float dt)
 {
     const auto im {input_manager::instance()};
+    if (im->key_pressed(SDL_SCANCODE_D)) {
+        debugging = !debugging;
+    }
     if (im->key_pressed(SDL_SCANCODE_B)) {
         mode = app_mode::DRAW;
     }
@@ -694,6 +700,32 @@ void application::draw_refactor()
         //    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         //}
 
+        if (debugging) {
+            std::vector<math::vec2f> ps;
+            if (brush_points.size() >= 4)
+                ps = {brush_points[brush_points.size()-1], brush_points[brush_points.size()-2], brush_points[brush_points.size()-3], brush_points[brush_points.size()-4]};
+            else if (brush_points.size() == 3)
+                ps = {brush_points[brush_points.size()-1], brush_points[brush_points.size()-2], brush_points[brush_points.size()-3]};
+            else if (brush_points.size() == 2)
+                ps = {brush_points[brush_points.size()-1], brush_points[brush_points.size()-2]};
+            else if (brush_points.size() == 1)
+                ps = {brush_points[brush_points.size()-1]};
+            for (const auto& p:ps) {
+                graphics::bind_vertex_array(circle_vao);
+
+                math::mat4f m {math::translate(p.x, p.y, 0.0f)*
+                               math::scale(2.0f*(info.brush_size+3.0f), 2.0f*(info.brush_size+3.0f), 1.0f)};
+
+                circle_shader.use_shader();
+                circle_shader.set_int("u_is_ring", 0);
+                circle_shader.set_mat4("u_mvp", canvas.projection*m);
+                circle_shader.set_float("u_radius", info.brush_size+3.0f);
+                circle_shader.set_vec2("u_center", p);
+                circle_shader.set_vec4("u_color", math::vec4f{1.0f, 0.0f, 0.0f, 1.0f});
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+            }
+        }
+
         // Special case where we don't move mouse and only draw a point.
         // No interpolation needed. Just draw single brush point.
         if (brush_points.size() == 1 && info.drawing_finished) {
@@ -707,6 +739,7 @@ void application::draw_refactor()
             circle_shader.set_mat4("u_mvp", canvas.projection*m);
             circle_shader.set_float("u_radius", info.brush_size);
             circle_shader.set_vec2("u_center", brush_points.front());
+            circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
         else if (brush_points.size() == 2 || brush_points.size() == 3) {
@@ -714,7 +747,7 @@ void application::draw_refactor()
             // and less than the amount needed for spline interpolation.
             // Draw a single line through them.
         }
-        else if (brush_points.size() >= 4) {
+        else if (brush_points.size() >= 4 && input_manager::instance()->mouse_moving()) {
             const std::vector<math::vec2f> ps {brush_points[brush_points.size()-1], brush_points[brush_points.size()-2], brush_points[brush_points.size()-3], brush_points[brush_points.size()-4]};
             std::vector<graphics::circle> samples;
             for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=0.1f) {
@@ -724,17 +757,23 @@ void application::draw_refactor()
 
             circle_batcher_shader.set_mat4("u_mvp", canvas.projection);
             graphics::draw_circles(samples, circle_batcher_shader);
-        }
+            //std::vector<graphics::quad> samples;
+            //for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=0.1f) {
+            //    samples.emplace_back(graphics::quad{get_point_on_path(ps, t), {info.brush_size, info.brush_size}, {0.0f, 0.0f, 0.0f}});
+            //}
+            //colored_quad_shader.set_mat4("u_mvp", canvas.projection);
+            //graphics::draw_quads(samples, colored_quad_shader);
 
-        //for (std::size_t i{}; i<samples.size(); ++i) {
-        //    const auto& pos {samples[i]};
-        //    math::mat4f m {math::translate(pos.x, pos.y, 0.0f)*
-        //                   math::scale(2*info.brush_size, 2*info.brush_size, 1.0f)};
-        //    circle_shader.set_mat4("u_mvp", canvas.projection*m);
-        //    circle_shader.set_float("u_radius", info.brush_size);
-        //    circle_shader.set_vec2("u_center", pos);
-        //    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-        //}
+            // treat lines as rotated quads where thickness == quad height
+            std::vector<graphics::line> lines;
+            for (std::size_t i{1}; i<samples.size(); ++i) {
+                lines.emplace_back(graphics::line{samples[i-1].center, samples[i].center, info.brush_size, {0.0f, 0.0f, 0.0f}});
+            }
+            ImGui::Text("lines - %zu", lines.size());
+
+            colored_quad_shader.set_mat4("u_mvp", canvas.projection);
+            graphics::draw_lines(lines, colored_quad_shader);
+        }
 
         if (info.drawing_finished) {
             info.drawing_finished = false;

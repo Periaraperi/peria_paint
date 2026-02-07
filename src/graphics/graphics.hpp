@@ -22,6 +22,13 @@ struct circle {
     float       radius {};
 };
 
+struct line {
+    math::vec2f p1    {};
+    math::vec2f p2    {};
+    float thickness   {};
+    math::vec3f color {};
+};
+
 struct screen_size {
     int w {};
     int h {};
@@ -103,9 +110,15 @@ void buffer_upload_subdata(const gl::named_buffer& buffer, std::size_t buffer_of
 // call this only once during application initialization
 void init_circle_batcher(u32 max_per_batch = 8192);
 
+// initializes batcher structure to render quads in a batched manner.
+// call this only once during application initialization
+void init_quad_batcher(u32 max_per_batch = 8192);
+
 // batched drawing routines
 
 void draw_circles(const std::vector<circle>& circles, const gl::shader& shader);
+
+void draw_lines(const std::vector<line>& lines, const gl::shader& shader);
 
 // clears frame buffer's color, depth, and stencil values.
 void clear_buffer_all(u32 fbo,

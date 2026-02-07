@@ -12,6 +12,8 @@
 #include <print>
 #include <vector>
 
+#include "math/vec.hpp"
+
 namespace peria::graphics {
 
 using i32 = std::int32_t;
@@ -26,6 +28,16 @@ struct circle_batcher {
     using vertex_type = gl::vertex<gl::pos2, gl::color3, gl::pos2, gl::attr<float, 2>>;
     std::vector<vertex_type> vertex_data;
 } circle_batcher;
+
+struct quad_batcher {
+    std::unique_ptr<gl::vertex_array> vao {nullptr};
+    std::unique_ptr<gl::named_buffer> vbo {nullptr};
+    std::unique_ptr<gl::named_buffer> ibo {nullptr};
+    i32 max_per_batch {};
+
+    using vertex_type = gl::vertex<gl::pos2, gl::color3>;
+    std::vector<vertex_type> vertex_data;
+} quad_batcher;
 
 struct graphics_info {
     color bg {BLACK};
@@ -133,10 +145,37 @@ void init_circle_batcher(u32 max_per_batch /*8192*/)
     vao_connect_ibo(*circle_batcher.vao, *circle_batcher.ibo);
 }
 
+void init_quad_batcher(u32 max_per_batch /*8192*/)
+{
+    quad_batcher.max_per_batch = (i32)max_per_batch;
+    quad_batcher.vao = std::make_unique<gl::vertex_array>();
+    quad_batcher.vbo = std::make_unique<gl::named_buffer>();
+    quad_batcher.ibo = std::make_unique<gl::named_buffer>();
+
+    quad_batcher.vertex_data.resize(4*max_per_batch);
+    buffer_allocate_data(*quad_batcher.vbo, 4*max_per_batch*sizeof(quad_batcher::vertex_type), GL_DYNAMIC_DRAW);
+
+    std::vector<u32> indices; indices.resize(max_per_batch*6);
+    for (u32 i{}; i<max_per_batch; ++i) {
+        indices[6*i]   = 4*i;
+        indices[6*i+1] = 4*i+1;
+        indices[6*i+2] = 4*i+2;
+
+        indices[6*i+3] = 4*i;
+        indices[6*i+4] = 4*i+2;
+        indices[6*i+5] = 4*i+3;
+    }
+    buffer_upload_data(*quad_batcher.ibo, indices, GL_STATIC_DRAW);
+
+    vao_configure<gl::pos2, gl::color3>(*quad_batcher.vao, *quad_batcher.vbo, 0);
+    vao_connect_ibo(*quad_batcher.vao, *quad_batcher.ibo);
+}
+
 void draw_circles(const std::vector<circle>& circles, const gl::shader& shader)
 {
     shader.use_shader();
     bind_vertex_array(*circle_batcher.vao);
+
     i32 count      {static_cast<i32>((circles.size()))};
     i32 iterations {count / circle_batcher.max_per_batch};
     i32 leftover   {count - (circle_batcher.max_per_batch*iterations)};
@@ -176,6 +215,67 @@ void draw_circles(const std::vector<circle>& circles, const gl::shader& shader)
     }
 }
 
+void draw_lines(const std::vector<line>& lines, const gl::shader& shader)
+{
+    shader.use_shader();
+    bind_vertex_array(*quad_batcher.vao);
+
+    i32 count      {static_cast<i32>((lines.size()))};
+    i32 iterations {count / quad_batcher.max_per_batch};
+    i32 leftover   {count - (quad_batcher.max_per_batch*iterations)};
+
+    // 2---------1
+    // |         |
+    // |         |
+    // 3_________0
+
+    auto get_line_quad = [](const line& l) -> std::array<gl::vertex<gl::pos2, gl::color3>, 4> {
+        const math::vec2f dir {(l.p2-l.p1).normalize()};
+        const math::vec2f dir_90 {-dir.y, dir.x};
+
+        const math::vec2f lower_left  {l.p1 - l.thickness*dir_90};
+        const math::vec2f upper_left  {l.p1 + l.thickness*dir_90};
+        const math::vec2f upper_right {l.p2 + l.thickness*dir_90};
+        const math::vec2f lower_right {l.p2 - l.thickness*dir_90};
+        const auto& [r, g, b] {l.color};
+
+        return {
+            gl::vertex{gl::pos2{lower_right.x, lower_right.y}, gl::color3{r, g, b}},
+            gl::vertex{gl::pos2{upper_right.x, upper_right.y}, gl::color3{r, g, b}},
+            gl::vertex{gl::pos2{upper_left .x, upper_left .y}, gl::color3{r, g, b}},
+            gl::vertex{gl::pos2{lower_left .x, lower_left .y}, gl::color3{r, g, b}}
+        };
+    };
+    
+    for (i32 i{}; i<iterations; ++i) {
+        for (i32 j{}; j<quad_batcher.max_per_batch; ++j) {
+            const std::size_t k {static_cast<std::size_t>(i*quad_batcher.max_per_batch + j)};
+            auto&& verts {get_line_quad(lines[k])};
+            quad_batcher.vertex_data[4*(u32)j + 0] = std::move(verts[0]);
+            quad_batcher.vertex_data[4*(u32)j + 1] = std::move(verts[1]);
+            quad_batcher.vertex_data[4*(u32)j + 2] = std::move(verts[2]);
+            quad_batcher.vertex_data[4*(u32)j + 3] = std::move(verts[3]);
+        }
+        buffer_upload_subdata(*quad_batcher.vbo, 0, 
+                              static_cast<std::size_t>(4*quad_batcher.max_per_batch)*quad_batcher::vertex_type::stride, 
+                              quad_batcher.vertex_data.data());
+        glDrawElements(GL_TRIANGLES, quad_batcher.max_per_batch*6, GL_UNSIGNED_INT, nullptr);
+    }
+    if (leftover > 0) {
+        for (i32 j{}; j<leftover; ++j) {
+            const std::size_t k {static_cast<std::size_t>(iterations*quad_batcher.max_per_batch + j)};
+            auto&& verts {get_line_quad(lines[k])};
+            quad_batcher.vertex_data[4*(u32)j + 0] = std::move(verts[0]);
+            quad_batcher.vertex_data[4*(u32)j + 1] = std::move(verts[1]);
+            quad_batcher.vertex_data[4*(u32)j + 2] = std::move(verts[2]);
+            quad_batcher.vertex_data[4*(u32)j + 3] = std::move(verts[3]);
+        }
+        buffer_upload_subdata(*quad_batcher.vbo, 0, 
+                              4*static_cast<u32>(leftover)*quad_batcher::vertex_type::stride, 
+                              quad_batcher.vertex_data.data());
+        glDrawElements(GL_TRIANGLES, leftover*6, GL_UNSIGNED_INT, nullptr);
+    }
+}
 void clear_buffer_all(u32 fbo,
                       const color& color,
                       float depth_value,
