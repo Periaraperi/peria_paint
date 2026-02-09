@@ -148,8 +148,15 @@ private:
         //std::string filename {};
     } canvas; //, transparent_canvas;
 
-    std::vector<math::vec2f> brush_points;
     math::vec2f eraser_pos;
+
+    struct brush_stroke {
+        std::vector<math::vec2f> brush_points; // stroke control points
+        float step {0.01f};
+    };
+    std::vector<brush_stroke> stroke_history;
+    std::size_t active_index {};
+    bool should_undo {};
 
     //struct temp_canvas {
     //    gl::texture2d texture;

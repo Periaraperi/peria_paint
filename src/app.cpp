@@ -38,7 +38,7 @@ bool point_inside_rect(const peria::math::vec2f& point_to_check, const peria::ma
            point_to_check.y <= rect_lower_left.y+rect_size.y;
 }
 
-// Generate Catmull-Rom spline which will go through each point in points based on parameter t 
+// Generate Catmull-Rom spline which will go through each point in points based on parameter t
 [[nodiscard]]
 peria::math::vec2f get_point_on_path(const std::vector<peria::math::vec2f>& points, float t)
 {
@@ -235,13 +235,13 @@ application::application(application_settings&& settings)
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      line_shader{"./assets/shaders/line_v2.vert", "./assets/shaders/line_v2.frag"},
      canvas_bg{gl::texture2d{graphics::create_texture2d_from_color(graphics::WHITE)}},
-     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(5000), 
-                                                     static_cast<int>(5000),
+     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(graphics::get_screen_size().w*0.75f), 
+                                                     static_cast<int>(graphics::get_screen_size().h*0.75f),
                                                      GL_RGBA32F)},
             gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, 
             {}, 
-            static_cast<int>(5000), 
-            static_cast<int>(5000), 
+            static_cast<int>(graphics::get_screen_size().w*0.75f), 
+            static_cast<int>(graphics::get_screen_size().h*0.75f), 
             {}, 
             {}
      }
@@ -616,6 +616,10 @@ void application::update_refactor([[maybe_unused]]float dt)
         info.aa -= 1.0f;
     }
 
+    if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_Z)) {
+        should_undo = true;
+    }
+
     cam2d.update(window_projection);
     
     const math::vec2f mouse_screen {im->get_mouse_gl().x, im->get_mouse_gl().y};
@@ -623,21 +627,24 @@ void application::update_refactor([[maybe_unused]]float dt)
     const math::vec2f canvas_world_lower_left {canvas.pos-math::vec2{canvas.width*0.5f, canvas.height*0.5f}};
     const auto inside_canvas {point_inside_rect(mouse_world, canvas_world_lower_left, {static_cast<float>(canvas.width), static_cast<float>(canvas.height)})};
 
+    if (mode == app_mode::DRAW) {
+        if (stroke_history.empty()) stroke_history.emplace_back();
+
         if (im->mouse_moving()) {
             if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
-                brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
+                stroke_history[active_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                 info.drawing = true;
                 info.drawing_finished = false;
             }
             if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
-                brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
+                stroke_history[active_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                 info.drawing = true;
                 info.drawing_finished = true;
             }
         }
         else {
             if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
-                brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
+                stroke_history[active_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                 info.drawing = true;
                 info.drawing_finished = true;
             }
@@ -650,22 +657,55 @@ void application::update_refactor([[maybe_unused]]float dt)
     //        info.drawing_finished = true;
     //    }
     //}
+    }
+
 }
 
 void application::draw_refactor()
 {
-    ImGui::Text("%zu", brush_points.size());
-    //graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
-    //graphics::bind_frame_buffer_default();
-    //graphics::clear_buffer_all(0, graphics::GREY, 1.0f, 0);
+    ImGui::Text("%zu", stroke_history[active_index].brush_points.size());
 
-    //math::mat4f model {math::translate(canvas.pos.x, canvas.pos.y, 0.0f)*
-    //                   math::scale(canvas.width, canvas.height, 1.0f)};
-    //
-    //graphics::bind_vertex_array(canvas_vao);
-    //textured_quad_shader.use_shader();
-    //textured_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view*model);
-    //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+    if (should_undo) {
+        graphics::bind_frame_buffer(canvas.buffer);
+        graphics::set_viewport(0, 0, canvas.width, canvas.height);
+        glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+        if (active_index > 0) --active_index;
+        if (stroke_history[active_index].brush_points.size() == 1) {
+            graphics::bind_vertex_array(circle_vao);
+
+            math::mat4f m {math::translate(stroke_history[active_index].brush_points.front().x, stroke_history[active_index].brush_points.front().y, 0.0f)*
+                           math::scale(2.0f*info.brush_size, 2.0f*info.brush_size, 1.0f)};
+
+            circle_shader.use_shader();
+            circle_shader.set_int("u_is_ring", 0);
+            circle_shader.set_mat4("u_mvp", canvas.projection*m);
+            circle_shader.set_float("u_radius", info.brush_size);
+            circle_shader.set_vec2("u_center", stroke_history[active_index].brush_points.front());
+            circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
+            circle_shader.set_float("u_aa", 0);
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        }
+        else if (stroke_history[active_index].brush_points.size() == 2 || stroke_history[active_index].brush_points.size() == 3) {
+            // Handle special case where stroke control points have more than a single point
+            // and less than the amount needed for spline interpolation.
+            // Draw a single line through them.
+        }
+        else if (stroke_history[active_index].brush_points.size() >= 4) {
+            std::vector<graphics::circle> samples;
+            for (float t{}; t<static_cast<float>(stroke_history[active_index].brush_points.size())-3.0f; t+=0.01f) {
+                samples.emplace_back(graphics::circle{get_point_on_path(stroke_history[active_index].brush_points, t), {0.0f, 0.0f, 0.0f}, info.brush_size});
+            }
+            ImGui::Text("%zu", samples.size());
+
+            circle_batcher_shader.set_mat4("u_mvp", canvas.projection);
+            circle_batcher_shader.set_float("u_aa", 0);
+            graphics::draw_circles(samples, circle_batcher_shader);
+        }
+
+        stroke_history[active_index].brush_points.clear();
+        should_undo = false;
+        return;
+    }
 
     if (info.drawing) {
         if (mode == app_mode::DRAW) {
@@ -684,8 +724,8 @@ void application::draw_refactor()
         //circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
 
         // Draw brush stroke points
-        //for (std::size_t i{}; i<brush_points.size(); ++i) {
-        //    const auto& pos {brush_points[i]};
+        //for (std::size_t i{}; i<stroke_history[active_index].brush_points.size(); ++i) {
+        //    const auto& pos {stroke_history[active_index].brush_points[i]};
         //    math::mat4f m {math::translate(pos.x, pos.y, 0.0f)*
         //                   math::scale(2.0f*info.brush_size, 2.0f*info.brush_size, 1.0f)};
         //    circle_shader.set_mat4("u_mvp", canvas.projection*m);
@@ -709,56 +749,56 @@ void application::draw_refactor()
         //    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         //}
 
-        if (debugging) {
-            std::vector<math::vec2f> ps;
-            if (brush_points.size() >= 4)
-                ps = {brush_points[brush_points.size()-1], brush_points[brush_points.size()-2], brush_points[brush_points.size()-3], brush_points[brush_points.size()-4]};
-            else if (brush_points.size() == 3)
-                ps = {brush_points[brush_points.size()-1], brush_points[brush_points.size()-2], brush_points[brush_points.size()-3]};
-            else if (brush_points.size() == 2)
-                ps = {brush_points[brush_points.size()-1], brush_points[brush_points.size()-2]};
-            else if (brush_points.size() == 1)
-                ps = {brush_points[brush_points.size()-1]};
-            for (const auto& p:ps) {
-                graphics::bind_vertex_array(circle_vao);
+        //if (debugging) {
+        //    std::vector<math::vec2f> ps;
+        //    if (stroke_history[active_index].brush_points.size() >= 4)
+        //        ps = {stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-1], stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-2], stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-3], stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-4]};
+        //    else if (stroke_history[active_index].brush_points.size() == 3)
+        //        ps = {stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-1], stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-2], stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-3]};
+        //    else if (stroke_history[active_index].brush_points.size() == 2)
+        //        ps = {stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-1], stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-2]};
+        //    else if (stroke_history[active_index].brush_points.size() == 1)
+        //        ps = {stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-1]};
+        //    for (const auto& p:ps) {
+        //        graphics::bind_vertex_array(circle_vao);
 
-                math::mat4f m {math::translate(p.x, p.y, 0.0f)*
-                               math::scale(2.0f*(info.brush_size+3.0f), 2.0f*(info.brush_size+3.0f), 1.0f)};
+        //        math::mat4f m {math::translate(p.x, p.y, 0.0f)*
+        //                       math::scale(2.0f*(info.brush_size+3.0f), 2.0f*(info.brush_size+3.0f), 1.0f)};
 
-                circle_shader.use_shader();
-                circle_shader.set_int("u_is_ring", 0);
-                circle_shader.set_mat4("u_mvp", canvas.projection*m);
-                circle_shader.set_float("u_radius", info.brush_size+3.0f);
-                circle_shader.set_vec2("u_center", p);
-                circle_shader.set_vec4("u_color", math::vec4f{1.0f, 0.0f, 0.0f, 1.0f});
-                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-            }
-        }
+        //        circle_shader.use_shader();
+        //        circle_shader.set_int("u_is_ring", 0);
+        //        circle_shader.set_mat4("u_mvp", canvas.projection*m);
+        //        circle_shader.set_float("u_radius", info.brush_size+3.0f);
+        //        circle_shader.set_vec2("u_center", p);
+        //        circle_shader.set_vec4("u_color", math::vec4f{1.0f, 0.0f, 0.0f, 1.0f});
+        //        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        //    }
+        //}
 
         // Special case where we don't move mouse and only draw a point.
         // No interpolation needed. Just draw single brush point.
-        if (brush_points.size() == 1 && info.drawing_finished) {
+        if (stroke_history[active_index].brush_points.size() == 1 && info.drawing_finished) {
             graphics::bind_vertex_array(circle_vao);
 
-            math::mat4f m {math::translate(brush_points.front().x, brush_points.front().y, 0.0f)*
+            math::mat4f m {math::translate(stroke_history[active_index].brush_points.front().x, stroke_history[active_index].brush_points.front().y, 0.0f)*
                            math::scale(2.0f*info.brush_size, 2.0f*info.brush_size, 1.0f)};
 
             circle_shader.use_shader();
             circle_shader.set_int("u_is_ring", 0);
             circle_shader.set_mat4("u_mvp", canvas.projection*m);
             circle_shader.set_float("u_radius", info.brush_size);
-            circle_shader.set_vec2("u_center", brush_points.front());
+            circle_shader.set_vec2("u_center", stroke_history[active_index].brush_points.front());
             circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
             circle_shader.set_float("u_aa", info.aa);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
-        else if (brush_points.size() == 2 || brush_points.size() == 3) {
+        else if (stroke_history[active_index].brush_points.size() == 2 || stroke_history[active_index].brush_points.size() == 3) {
             // Handle special case where stroke control points have more than a single point
             // and less than the amount needed for spline interpolation.
             // Draw a single line through them.
         }
-        else if (brush_points.size() >= 4 && input_manager::instance()->mouse_moving()) {
-            std::vector<math::vec2f> ps {brush_points[brush_points.size()-1], brush_points[brush_points.size()-2], brush_points[brush_points.size()-3], brush_points[brush_points.size()-4]};
+        else if (stroke_history[active_index].brush_points.size() >= 4 && input_manager::instance()->mouse_moving()) {
+            std::vector<math::vec2f> ps {stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-1], stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-2], stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-3], stroke_history[active_index].brush_points[stroke_history[active_index].brush_points.size()-4]};
             std::reverse(ps.begin(), ps.end());
             std::vector<graphics::circle> samples;
             for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=0.01f) {
@@ -795,7 +835,8 @@ void application::draw_refactor()
         if (info.drawing_finished) {
             info.drawing_finished = false;
             info.drawing = false;
-            brush_points.clear();
+            ++active_index;
+            if (active_index >= stroke_history.size()) stroke_history.emplace_back();
         }
     }
 
