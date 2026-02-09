@@ -152,11 +152,14 @@ private:
 
     struct brush_stroke {
         std::vector<math::vec2f> brush_points; // stroke control points
-        float step {0.01f};
+        float aa {1.0f};
+        float brush_size {10.0f};
     };
-    std::vector<brush_stroke> stroke_history;
-    std::size_t active_index {};
+    std::vector<brush_stroke> stroke_history; // indexing starts from 1
+    std::size_t last_stroke_index {};
+    std::size_t last_valid_redo_index {};
     bool should_undo {};
+    bool should_redo {};
 
     //struct temp_canvas {
     //    gl::texture2d texture;
@@ -178,8 +181,9 @@ private:
     struct info {
         bool drawing          {false};
         bool drawing_finished {false};
-        float brush_size {5.0f};
-        float aa {1.0f};
+        bool new_stroke_start {true};
+        float current_brush_size {5.0f};
+        float current_aa {1.0f};
         //bool resized {true};
         //bool resizing {false};
         //int new_width {};
