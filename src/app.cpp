@@ -660,14 +660,14 @@ void application::update_refactor([[maybe_unused]]float dt)
                 if (info.new_stroke_start) {
                     ++last_stroke_index;
                     if (last_stroke_index >= stroke_history.size()) stroke_history.emplace_back();
-                    stroke_history[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
-                    stroke_history[last_stroke_index].brush_size = info.current_brush_size;
-                    stroke_history[last_stroke_index].aa = info.current_aa;
                     for (std::size_t i{last_stroke_index}; i<=last_valid_redo_index; ++i) {
                         stroke_history[i].brush_size = 0.0f;
                         stroke_history[i].aa = 0.0f;
                         stroke_history[i].brush_points.clear();
                     }
+                    stroke_history[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
+                    stroke_history[last_stroke_index].brush_size = info.current_brush_size;
+                    stroke_history[last_stroke_index].aa = info.current_aa;
                     last_valid_redo_index = last_stroke_index;
                 }
                 info.drawing = true;
@@ -699,7 +699,6 @@ void application::draw_refactor()
         graphics::set_viewport(0, 0, canvas.width, canvas.height);
         graphics::clear_buffer_color(canvas.buffer.id, graphics::color{0.0f, 0.0f, 0.0f, 0.0f});
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        //stroke_history[last_stroke_index].brush_points.clear();
         if (last_stroke_index > 0) --last_stroke_index;
         for (std::size_t i{1}; i<=last_stroke_index; ++i) {
             const auto& stroke {stroke_history[i]};
