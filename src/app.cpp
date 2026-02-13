@@ -242,13 +242,16 @@ application::application(application_settings&& settings)
             {}, 
             static_cast<int>(graphics::get_screen_size().w*0.75f), 
             static_cast<int>(graphics::get_screen_size().h*0.75f), 
-            {}, 
+            {},
             {}
+     },
+     temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}},
+                  gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)},
+                  {}
      }
      //transparent_canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), GL_RGBA32F)},
      //       gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, {}, 
      //       static_cast<int>(settings.window_width*0.75f), static_cast<int>(settings.window_height*0.75f), {}, {}, graphics::WHITE, ""},
-     //temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}}, {}, canvas.width, canvas.height}
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
@@ -392,23 +395,28 @@ application::application(application_settings&& settings)
                 std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
             }
 
+            glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+            status = glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER);
+            if (status != GL_FRAMEBUFFER_COMPLETE) {
+                std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+            }
+
             //glNamedFramebufferTexture(transparent_canvas.buffer.id, GL_COLOR_ATTACHMENT0, transparent_canvas.texture.id, 0);
             //status = glCheckNamedFramebufferStatus(transparent_canvas.buffer.id, GL_FRAMEBUFFER);
             //if (status != GL_FRAMEBUFFER_COMPLETE) {
             //    std::println("FrameBuffer with id {} is incomplete\n {}", transparent_canvas.buffer.id, status);
             //}
 
-            //glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
-            //status = glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER);
-            //if (status != GL_FRAMEBUFFER_COMPLETE) {
-            //    std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
-            //}
         }
 
         textured_quad_shader.set_int("u_canvas_texture", 0);
+
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+        canvas.pos = 0.5f*peria::math::vec2f{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)};
+        temp_canvas.width  = canvas.width;
+        temp_canvas.height = canvas.height;
+
         //transparent_canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
-        canvas.pos = 0.5f*peria::math::vec2f{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
         //transparent_canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
         //info.new_width = canvas.width;
         //info.new_height = canvas.height;
@@ -601,20 +609,21 @@ void application::update_refactor([[maybe_unused]]float dt)
     ImGui::SliderFloat("AA", &info.current_aa, 0.0f, 30.0f);
     ImGui::SliderFloat("brushSize", &info.current_brush_size, 1.0f, 30.0f);
     const auto im {input_manager::instance()};
-    if (im->key_pressed(SDL_SCANCODE_D)) {
-        debugging = !debugging;
-    }
+    //if (im->key_pressed(SDL_SCANCODE_D)) {
+    //    debugging = !debugging;
+    //}
     if (im->key_pressed(SDL_SCANCODE_B)) {
         mode = app_mode::DRAW;
     }
-    if (im->key_pressed(SDL_SCANCODE_E)) {
+    if (im->key_pressed(SDL_SCANCODE_R)) {
         mode = app_mode::RESIZE;
     }
-
+    //if (im->key_pressed(SDL_SCANCODE_E)) {
+    //    mode = app_mode::RESIZE;
+    //}
     if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_Z)) {
         should_undo = true;
     }
-
     if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_R)) {
         should_redo = true;
     }
@@ -624,57 +633,106 @@ void application::update_refactor([[maybe_unused]]float dt)
     const math::vec2f mouse_screen {im->get_mouse_gl().x, im->get_mouse_gl().y};
     const math::vec2f mouse_world {cam2d.screen_to_world(mouse_screen, window_projection)};
     const math::vec2f canvas_world_lower_left {canvas.pos-math::vec2{canvas.width*0.5f, canvas.height*0.5f}};
-    const auto inside_canvas {point_inside_rect(mouse_world, canvas_world_lower_left, {static_cast<float>(canvas.width), static_cast<float>(canvas.height)})};
+    const bool inside_canvas {point_inside_rect(mouse_world, canvas_world_lower_left, {static_cast<float>(canvas.width), static_cast<float>(canvas.height)})};
 
-    if (mode == app_mode::DRAW) {
-        if (im->mouse_moving()) {
-            if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
-                if (info.new_stroke_start) {
-                    ++last_stroke_index;
-                    if (last_stroke_index >= stroke_history.size()) stroke_history.emplace_back();
-                    for (std::size_t i{last_stroke_index}; i<=last_valid_redo_index; ++i) {
-                        stroke_history[i].brush_size = 0.0f;
-                        stroke_history[i].aa = 0.0f;
-                        stroke_history[i].brush_points.clear();
-                    }
-                    last_valid_redo_index = last_stroke_index;
-                }
-                stroke_history[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
-                stroke_history[last_stroke_index].brush_size = info.current_brush_size;
-                stroke_history[last_stroke_index].aa = info.current_aa;
-                info.drawing = true;
-                info.drawing_finished = false;
-                info.new_stroke_start = false;
-            }
-            if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
-                stroke_history[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
-                stroke_history[last_stroke_index].brush_size = info.current_brush_size;
-                stroke_history[last_stroke_index].aa = info.current_aa;
-                info.drawing = true;
-                info.drawing_finished = true;
-                info.new_stroke_start = true;
-            }
-        }
-        else {
-            if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
-                if (info.new_stroke_start) {
-                    ++last_stroke_index;
-                    if (last_stroke_index >= stroke_history.size()) stroke_history.emplace_back();
-                    for (std::size_t i{last_stroke_index}; i<=last_valid_redo_index; ++i) {
-                        stroke_history[i].brush_size = 0.0f;
-                        stroke_history[i].aa = 0.0f;
-                        stroke_history[i].brush_points.clear();
+    switch (mode) {
+        case app_mode::DRAW:
+        {
+            if (im->mouse_moving()) {
+                if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
+                    if (info.new_stroke_start) {
+                        ++last_stroke_index;
+                        if (last_stroke_index >= stroke_history.size()) stroke_history.emplace_back();
+                        for (std::size_t i{last_stroke_index}; i<=last_valid_redo_index; ++i) {
+                            stroke_history[i].brush_size = 0.0f;
+                            stroke_history[i].aa = 0.0f;
+                            stroke_history[i].brush_points.clear();
+                        }
+                        last_valid_redo_index = last_stroke_index;
                     }
                     stroke_history[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                     stroke_history[last_stroke_index].brush_size = info.current_brush_size;
                     stroke_history[last_stroke_index].aa = info.current_aa;
-                    last_valid_redo_index = last_stroke_index;
+                    info.drawing = true;
+                    info.drawing_finished = false;
+                    info.new_stroke_start = false;
                 }
-                info.drawing = true;
-                info.drawing_finished = true;
-                info.new_stroke_start = true;
+                if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
+                    stroke_history[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
+                    stroke_history[last_stroke_index].brush_size = info.current_brush_size;
+                    stroke_history[last_stroke_index].aa = info.current_aa;
+                    info.drawing = true;
+                    info.drawing_finished = true;
+                    info.new_stroke_start = true;
+                }
+            }
+            else {
+                if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
+                    if (info.new_stroke_start) {
+                        ++last_stroke_index;
+                        if (last_stroke_index >= stroke_history.size()) stroke_history.emplace_back();
+                        for (std::size_t i{last_stroke_index}; i<=last_valid_redo_index; ++i) {
+                            stroke_history[i].brush_size = 0.0f;
+                            stroke_history[i].aa = 0.0f;
+                            stroke_history[i].brush_points.clear();
+                        }
+                        stroke_history[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
+                        stroke_history[last_stroke_index].brush_size = info.current_brush_size;
+                        stroke_history[last_stroke_index].aa = info.current_aa;
+                        last_valid_redo_index = last_stroke_index;
+                    }
+                    info.drawing = true;
+                    info.drawing_finished = true;
+                    info.new_stroke_start = true;
+                }
+            }    
+        } 
+            break;
+        case app_mode::RESIZE: 
+        {
+            if (!info.resizing) {
+                // determine if we started resizing, and from which button.
+                int index {-1};
+                int k {};
+                for (const auto& [dx, dy]:canvas_resize_dirs) {
+                    const math::vec2f button_lower_left {
+                        canvas.pos.x+(0.5f*static_cast<float>(canvas.width*dx))-info.resize_button_radius,
+                        canvas.pos.y+(0.5f*static_cast<float>(canvas.height*dy))-info.resize_button_radius,
+                    };
+                    if (point_inside_rect(mouse_world, button_lower_left, {info.resize_button_radius, info.resize_button_radius})) {
+                        index = k;
+                        break;
+                    }
+                    ++k;
+                }
+                if(index != -1 && im->mouse_pressed(mouse_button::LEFT)) {
+                    info.resizing = true;
+                    info.resize_button_index = index;
+                }
+            }
+            if (info.resizing && im->mouse_down(mouse_button::LEFT)) {
+                const auto resize_dir {canvas_resize_dirs[static_cast<std::size_t>(info.resize_button_index)]};
+                const auto dx {mouse_world.x-(canvas.pos.x+resize_dir.x*canvas.width*0.5f)};
+                const auto dy {mouse_world.y-(canvas.pos.y+resize_dir.y*canvas.height*0.5f)};
+                info.new_width  = static_cast<int>(static_cast<float>(canvas.width )+dx*static_cast<float>(resize_dir.x));
+                info.new_height = static_cast<int>(static_cast<float>(canvas.height)+dy*static_cast<float>(resize_dir.y));
+            }
+            if (info.resizing && im->mouse_released(mouse_button::LEFT)) {
+                temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA32F);
+                glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+                const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
+                if (status != GL_FRAMEBUFFER_COMPLETE) {
+                    std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+                }
+                info.resizing = false;
+                info.resized = true;
             }
         }
+            break;
+        default:
+            break;
+    }
+
     //}
     //else {
     //    if (!im->mouse_moving() && im->mouse_pressed(mouse_button::LEFT) && inside_canvas) {
@@ -683,8 +741,6 @@ void application::update_refactor([[maybe_unused]]float dt)
     //        info.drawing_finished = true;
     //    }
     //}
-    }
-
 }
 
 void application::draw_refactor()
@@ -693,6 +749,64 @@ void application::draw_refactor()
     ImGui::Text("last stroke idx %zu", last_stroke_index);
     ImGui::Text("last valid redo idx %zu", last_valid_redo_index);
     ImGui::Text("size %zu", stroke_history.size());
+
+    // Clear resized buffer and copy all contents from old to new.
+    // Then swap struct info as well.
+    if (info.resized) {
+        temp_canvas.width  = info.new_width;
+        temp_canvas.height = info.new_height;
+        graphics::bind_frame_buffer(temp_canvas.buffer);
+        graphics::set_viewport(0, 0, temp_canvas.width, temp_canvas.height);
+
+        const auto w {std::min(temp_canvas.width,  canvas.width)};
+        const auto h {std::min(temp_canvas.height, canvas.height)};
+
+        math::vec2f dst {};
+        math::vec2f src {};
+        float dw {static_cast<float>(info.new_width-canvas.width)};
+        float dh {static_cast<float>(info.new_height-canvas.height)};
+        switch (info.resize_button_index) {
+            case 0:
+                if (dw > 0) dst.x =  dw;
+                else        src.x = -dw;
+                if (dh > 0) dst.y =  dh;
+                else        src.y = -dh;
+                canvas.pos += math::vec2f{-dw*0.5f, -dh*0.5f};
+                break;
+            case 1: 
+            case 2:
+                if (dw > 0) dst.x =  dw;
+                else        src.x = -dw;
+                canvas.pos += math::vec2f{-dw*0.5f, dh*0.5f};
+                break;
+            case 3:
+            case 4:
+            case 5:
+                canvas.pos += math::vec2f{dw*0.5f, dh*0.5f};
+                break;
+            case 6: 
+            case 7:
+                if (dh > 0) dst.y =  dh;
+                else        src.y = -dh;
+                canvas.pos += math::vec2{dw*0.5f, -dh*0.5f};
+                break;
+            default:
+                break;
+        }
+
+        glCopyImageSubData(canvas.texture.id, GL_TEXTURE_2D , 0, static_cast<int>(src.x), static_cast<int>(src.y), 0,
+                           temp_canvas.texture.id, GL_TEXTURE_2D, 0, static_cast<int>(dst.x), static_cast<int>(dst.y), 0, 
+                           w, h, 1);
+
+        std::swap(temp_canvas.buffer.id, canvas.buffer.id);
+        std::swap(temp_canvas.texture.id, canvas.texture.id);
+        std::swap(temp_canvas.width, canvas.width);
+        std::swap(temp_canvas.height, canvas.height);
+        canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+
+        info.resized = false;
+        info.resize_button_index = -1;
+    }
 
     if (should_undo) {
         graphics::bind_frame_buffer(canvas.buffer);
@@ -931,6 +1045,25 @@ void application::draw_refactor()
 
         graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+        if (mode == app_mode::RESIZE) {
+            graphics::bind_vertex_array(circle_vao);
+
+            for (const auto& [dx, dy]:canvas_resize_dirs) {
+                auto pos {canvas.pos+math::vec2f{0.5f*canvas.width*dx, 0.5f*canvas.height*dy}};
+                math::mat4f m {math::translate(pos.x, pos.y, 0.0f)*
+                               math::scale(2.0f*info.resize_button_radius, 2.0f*info.resize_button_radius, 1.0f)};
+
+                circle_shader.use_shader();
+                circle_shader.set_int("u_is_ring", 0);
+                circle_shader.set_mat4("u_mvp", window_projection*cam2d.view*m);
+                circle_shader.set_float("u_radius", info.resize_button_radius);
+                circle_shader.set_vec2("u_center", pos);
+                circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
+                circle_shader.set_float("u_aa", 0.0f);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+            }
+        }
     }
 }
 

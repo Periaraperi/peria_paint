@@ -135,7 +135,7 @@ private:
         RESIZE = 1
     } mode {app_mode::DRAW};
 
-    struct canvas {
+    struct draw_region {
         gl::texture2d texture;
         gl::sampler sampler;
         gl::frame_buffer buffer;
@@ -143,10 +143,11 @@ private:
         int width  {};
         int height {};
         math::vec2f pos {};
-        math::mat4f projection;
+        math::mat4f projection {};
+    };
 
-        //std::string filename {};
-    } canvas; //, transparent_canvas;
+    draw_region canvas {};
+    draw_region temp_canvas {};
 
     math::vec2f eraser_pos;
 
@@ -179,17 +180,26 @@ private:
     //} eraser_;
 
     struct info {
+        // brush stroke rendering information
         bool drawing          {false};
         bool drawing_finished {false};
         bool new_stroke_start {true};
         float current_brush_size {5.0f};
         float current_aa {1.0f};
-        //bool resized {true};
-        //bool resizing {false};
-        //int new_width {};
-        //int new_height {};
-        //int resize_button_index {-1};
+
+        // canvas resizing information
+        bool resized {false};
+        bool resizing {false};
+        int new_width {};
+        int new_height {};
+        int resize_button_index {-1};
+        float resize_button_radius {7.0f};
     } info;
+
+
+    std::array<math::vec2i, 8> canvas_resize_dirs {{
+        {-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}
+    }};
 
     //struct rect_selection {
     //    bool is_selecting {false};
