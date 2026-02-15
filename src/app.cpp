@@ -609,9 +609,6 @@ void application::update_refactor([[maybe_unused]]float dt)
     ImGui::SliderFloat("AA", &info.current_aa, 0.0f, 30.0f);
     ImGui::SliderFloat("brushSize", &info.current_brush_size, 1.0f, 30.0f);
     const auto im {input_manager::instance()};
-    //if (im->key_pressed(SDL_SCANCODE_D)) {
-    //    debugging = !debugging;
-    //}
     if (im->key_pressed(SDL_SCANCODE_B)) {
         mode = app_mode::DRAW;
     }
@@ -639,8 +636,9 @@ void application::update_refactor([[maybe_unused]]float dt)
         case app_mode::DRAW:
         case app_mode::ERASER:
         {
+            if (info.new_stroke_start && !inside_canvas) break;
             if (im->mouse_moving()) {
-                if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
+                if (im->mouse_down(mouse_button::LEFT)) {
                     if (info.new_stroke_start) {
                         ++last_stroke_index;
                         if (last_stroke_index >= stroke_history.size()) stroke_history.emplace_back();
@@ -660,7 +658,7 @@ void application::update_refactor([[maybe_unused]]float dt)
                     info.drawing_finished = false;
                     info.new_stroke_start = false;
                 }
-                if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
+                if (im->mouse_released(mouse_button::LEFT)) {
                     stroke_history[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                     stroke_history[last_stroke_index].brush_size = info.current_brush_size;
                     stroke_history[last_stroke_index].aa = info.current_aa;
@@ -671,7 +669,7 @@ void application::update_refactor([[maybe_unused]]float dt)
                 }
             }
             else {
-                if (im->mouse_released(mouse_button::LEFT) && inside_canvas) {
+                if (im->mouse_released(mouse_button::LEFT)) {
                     if (info.new_stroke_start) {
                         ++last_stroke_index;
                         if (last_stroke_index >= stroke_history.size()) stroke_history.emplace_back();
@@ -794,6 +792,13 @@ void application::draw_refactor()
                            temp_canvas.texture.id, GL_TEXTURE_2D, 0, static_cast<int>(dst.x), static_cast<int>(dst.y), 0, 
                            w, h, 1);
 
+        //glBlitNamedFramebuffer(canvas.buffer.id, temp_canvas.buffer.id, 
+        //        static_cast<int>(src.x), static_cast<int>(src.y),
+        //        w, h, 
+        //        static_cast<int>(dst.x), static_cast<int>(dst.y), 
+        //        w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+
         std::swap(temp_canvas.buffer.id, canvas.buffer.id);
         std::swap(temp_canvas.texture.id, canvas.texture.id);
         std::swap(temp_canvas.width, canvas.width);
@@ -836,6 +841,26 @@ void application::draw_refactor()
                 // Handle special case where stroke control points have more than a single point
                 // and less than the amount needed for spline interpolation.
                 // Draw a single line through them.
+                circle_shader.use_shader();
+                circle_shader.set_int("u_is_ring", 0);
+                const auto& first {stroke.brush_points.front()};
+                const auto& last  {stroke.brush_points.back()};
+
+                for (const auto& [x, y]:{first, last}) {
+                    graphics::bind_vertex_array(circle_vao);
+                    math::mat4f m {math::translate(x, y, 0.0f)*
+                                   math::scale(2.0f*stroke.brush_size, 2.0f*stroke.brush_size, 1.0f)};
+
+                    circle_shader.set_mat4("u_mvp", canvas.projection*m);
+                    circle_shader.set_float("u_radius", stroke.brush_size);
+                    circle_shader.set_vec2("u_center", {x, y});
+                    circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
+                    circle_shader.set_float("u_aa", stroke.aa);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+                }
+
+                colored_quad_shader.set_mat4("u_mvp", canvas.projection);
+                graphics::draw_lines({graphics::line{first, last, stroke.brush_size}}, colored_quad_shader);
             }
             else if (stroke.brush_points.size() >= 4) {
                 std::vector<graphics::circle> samples;
@@ -884,6 +909,26 @@ void application::draw_refactor()
                 // Handle special case where stroke control points have more than a single point
                 // and less than the amount needed for spline interpolation.
                 // Draw a single line through them.
+                circle_shader.use_shader();
+                circle_shader.set_int("u_is_ring", 0);
+                const auto& first {stroke.brush_points.front()};
+                const auto& last  {stroke.brush_points.back()};
+
+                for (const auto& [x, y]:{first, last}) {
+                    graphics::bind_vertex_array(circle_vao);
+                    math::mat4f m {math::translate(x, y, 0.0f)*
+                                   math::scale(2.0f*stroke.brush_size, 2.0f*stroke.brush_size, 1.0f)};
+
+                    circle_shader.set_mat4("u_mvp", canvas.projection*m);
+                    circle_shader.set_float("u_radius", stroke.brush_size);
+                    circle_shader.set_vec2("u_center", {x, y});
+                    circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
+                    circle_shader.set_float("u_aa", stroke.aa);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+                }
+
+                colored_quad_shader.set_mat4("u_mvp", canvas.projection);
+                graphics::draw_lines({graphics::line{first, last, stroke.brush_size}}, colored_quad_shader);
             }
             else if (stroke.brush_points.size() >= 4) {
                 std::vector<graphics::circle> samples;
@@ -926,10 +971,32 @@ void application::draw_refactor()
             circle_shader.set_float("u_aa", info.current_aa);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
-        else if (stroke_history[last_stroke_index].brush_points.size() == 2 || stroke_history[last_stroke_index].brush_points.size() == 3) {
+        else if ((stroke_history[last_stroke_index].brush_points.size() == 2 || stroke_history[last_stroke_index].brush_points.size() == 3) 
+                 && info.drawing_finished) {
             // Handle special case where stroke control points have more than a single point
             // and less than the amount needed for spline interpolation.
             // Draw a single line through them.
+
+            circle_shader.use_shader();
+            circle_shader.set_int("u_is_ring", 0);
+            const auto& first {stroke_history[last_stroke_index].brush_points.front()};
+            const auto& last  {stroke_history[last_stroke_index].brush_points.back()};
+
+            for (const auto& [x, y]:{first, last}) {
+                graphics::bind_vertex_array(circle_vao);
+                math::mat4f m {math::translate(x, y, 0.0f)*
+                               math::scale(2.0f*info.current_brush_size, 2.0f*info.current_brush_size, 1.0f)};
+
+                circle_shader.set_mat4("u_mvp", canvas.projection*m);
+                circle_shader.set_float("u_radius", info.current_brush_size);
+                circle_shader.set_vec2("u_center", {x, y});
+                circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
+                circle_shader.set_float("u_aa", info.current_aa);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+            }
+
+            colored_quad_shader.set_mat4("u_mvp", canvas.projection);
+            graphics::draw_lines({graphics::line{first, last, info.current_brush_size}}, colored_quad_shader);
         }
         else if (stroke_history[last_stroke_index].brush_points.size() >= 4 && input_manager::instance()->mouse_moving()) {
             std::vector<math::vec2f> ps {stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-1], stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-2], stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-3], stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-4]};
