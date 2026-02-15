@@ -63,37 +63,37 @@ peria::math::vec2f get_point_on_path(const std::vector<peria::math::vec2f>& poin
                                      c1*points[p0].y + c2*points[p1].y + c3*points[p2].y + c4*points[p3].y};
 }
 
-[[nodiscard]]
-std::vector<peria::gl::vertex<peria::gl::pos2, peria::gl::color4>> generic_add_line(const peria::line& line)
-{
-    const float vec_x {line.p2.x-line.p1.x};
-    const float vec_y {line.p2.y-line.p1.y};
-    const float len {std::sqrt(vec_x*vec_x+vec_y*vec_y)};
-    const float dir_x {vec_x/len};
-    const float dir_y {vec_y/len};
-    const float dir_x_90 {-dir_y};
-    const float dir_y_90 {dir_x};
-
-    const float lower_left_x {line.p1.x - line.thickness*dir_x_90};
-    const float lower_left_y {line.p1.y - line.thickness*dir_y_90};
-
-    const float upper_left_x {line.p1.x + line.thickness*dir_x_90};
-    const float upper_left_y {line.p1.y + line.thickness*dir_y_90};
-
-    const float upper_right_x {line.p2.x + line.thickness*dir_x_90};
-    const float upper_right_y {line.p2.y + line.thickness*dir_y_90};
-
-    const float lower_right_x {line.p2.x - line.thickness*dir_x_90};
-    const float lower_right_y {line.p2.y - line.thickness*dir_y_90};
-
-    const auto& [r, g, b] {line.color};
-    return {
-        {{lower_left_x,  lower_left_y }, {r, g, b, 1.0f}},
-        {{upper_left_x,  upper_left_y }, {r, g, b, 1.0f}},
-        {{upper_right_x, upper_right_y}, {r, g, b, 1.0f}},
-        {{lower_right_x, lower_right_y}, {r, g, b, 1.0f}}
-    };
-}
+//[[nodiscard]]
+//std::vector<peria::gl::vertex<peria::gl::pos2, peria::gl::color4>> generic_add_line(const peria::line& line)
+//{
+//    const float vec_x {line.p2.x-line.p1.x};
+//    const float vec_y {line.p2.y-line.p1.y};
+//    const float len {std::sqrt(vec_x*vec_x+vec_y*vec_y)};
+//    const float dir_x {vec_x/len};
+//    const float dir_y {vec_y/len};
+//    const float dir_x_90 {-dir_y};
+//    const float dir_y_90 {dir_x};
+//
+//    const float lower_left_x {line.p1.x - line.thickness*dir_x_90};
+//    const float lower_left_y {line.p1.y - line.thickness*dir_y_90};
+//
+//    const float upper_left_x {line.p1.x + line.thickness*dir_x_90};
+//    const float upper_left_y {line.p1.y + line.thickness*dir_y_90};
+//
+//    const float upper_right_x {line.p2.x + line.thickness*dir_x_90};
+//    const float upper_right_y {line.p2.y + line.thickness*dir_y_90};
+//
+//    const float lower_right_x {line.p2.x - line.thickness*dir_x_90};
+//    const float lower_right_y {line.p2.y - line.thickness*dir_y_90};
+//
+//    const auto& [r, g, b] {line.color};
+//    return {
+//        {{lower_left_x,  lower_left_y }, {r, g, b, 1.0f}},
+//        {{upper_left_x,  upper_left_y }, {r, g, b, 1.0f}},
+//        {{upper_right_x, upper_right_y}, {r, g, b, 1.0f}},
+//        {{lower_right_x, lower_right_y}, {r, g, b, 1.0f}}
+//    };
+//}
 
 [[nodiscard]]
 std::vector<std::string> get_all_png_images()
@@ -618,13 +618,13 @@ void application::update_refactor([[maybe_unused]]float dt)
     if (im->key_pressed(SDL_SCANCODE_R)) {
         mode = app_mode::RESIZE;
     }
-    //if (im->key_pressed(SDL_SCANCODE_E)) {
-    //    mode = app_mode::RESIZE;
-    //}
+    if (im->key_pressed(SDL_SCANCODE_E)) {
+        mode = app_mode::ERASER;
+    }
     if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_Z)) {
         should_undo = true;
     }
-    if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_R)) {
+    if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_Y)) {
         should_redo = true;
     }
 
@@ -637,6 +637,7 @@ void application::update_refactor([[maybe_unused]]float dt)
 
     switch (mode) {
         case app_mode::DRAW:
+        case app_mode::ERASER:
         {
             if (im->mouse_moving()) {
                 if (im->mouse_down(mouse_button::LEFT) && inside_canvas) {
@@ -647,12 +648,14 @@ void application::update_refactor([[maybe_unused]]float dt)
                             stroke_history[i].brush_size = 0.0f;
                             stroke_history[i].aa = 0.0f;
                             stroke_history[i].brush_points.clear();
+                            stroke_history[i].mode = mode;
                         }
                         last_valid_redo_index = last_stroke_index;
                     }
                     stroke_history[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                     stroke_history[last_stroke_index].brush_size = info.current_brush_size;
                     stroke_history[last_stroke_index].aa = info.current_aa;
+                    stroke_history[last_stroke_index].mode = mode;
                     info.drawing = true;
                     info.drawing_finished = false;
                     info.new_stroke_start = false;
@@ -661,6 +664,7 @@ void application::update_refactor([[maybe_unused]]float dt)
                     stroke_history[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                     stroke_history[last_stroke_index].brush_size = info.current_brush_size;
                     stroke_history[last_stroke_index].aa = info.current_aa;
+                    stroke_history[last_stroke_index].mode = mode;
                     info.drawing = true;
                     info.drawing_finished = true;
                     info.new_stroke_start = true;
@@ -679,6 +683,7 @@ void application::update_refactor([[maybe_unused]]float dt)
                         stroke_history[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                         stroke_history[last_stroke_index].brush_size = info.current_brush_size;
                         stroke_history[last_stroke_index].aa = info.current_aa;
+                        stroke_history[last_stroke_index].mode = mode;
                         last_valid_redo_index = last_stroke_index;
                     }
                     info.drawing = true;
@@ -699,7 +704,7 @@ void application::update_refactor([[maybe_unused]]float dt)
                         canvas.pos.x+(0.5f*static_cast<float>(canvas.width*dx))-info.resize_button_radius,
                         canvas.pos.y+(0.5f*static_cast<float>(canvas.height*dy))-info.resize_button_radius,
                     };
-                    if (point_inside_rect(mouse_world, button_lower_left, {info.resize_button_radius, info.resize_button_radius})) {
+                    if (point_inside_rect(mouse_world, button_lower_left, {2.0f*info.resize_button_radius, 2.0f*info.resize_button_radius})) {
                         index = k;
                         break;
                     }
@@ -732,15 +737,6 @@ void application::update_refactor([[maybe_unused]]float dt)
         default:
             break;
     }
-
-    //}
-    //else {
-    //    if (!im->mouse_moving() && im->mouse_pressed(mouse_button::LEFT) && inside_canvas) {
-    //        eraser_pos = math::vec2f{mouse_world-canvas_world_lower_left};
-    //        info.drawing = true;
-    //        info.drawing_finished = true;
-    //    }
-    //}
 }
 
 void application::draw_refactor()
@@ -812,10 +808,15 @@ void application::draw_refactor()
         graphics::bind_frame_buffer(canvas.buffer);
         graphics::set_viewport(0, 0, canvas.width, canvas.height);
         graphics::clear_buffer_color(canvas.buffer.id, graphics::color{0.0f, 0.0f, 0.0f, 0.0f});
-        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         if (last_stroke_index > 0) --last_stroke_index;
         for (std::size_t i{1}; i<=last_stroke_index; ++i) {
             const auto& stroke {stroke_history[i]};
+            if (stroke.mode == app_mode::DRAW) {
+                glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+            }
+            if (stroke.mode == app_mode::ERASER) {
+                glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+            }
             if (stroke.brush_points.size() == 1) {
                 graphics::bind_vertex_array(circle_vao);
 
@@ -855,10 +856,15 @@ void application::draw_refactor()
         if (last_stroke_index+1 <= last_valid_redo_index) {
             graphics::bind_frame_buffer(canvas.buffer);
             graphics::set_viewport(0, 0, canvas.width, canvas.height);
-            glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
             ++last_stroke_index;
 
             const auto& stroke {stroke_history[last_stroke_index]};
+            if (stroke.mode == app_mode::DRAW) {
+                glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+            }
+            if (stroke.mode == app_mode::ERASER) {
+                glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+            }
             if (stroke.brush_points.size() == 1) {
                 graphics::bind_vertex_array(circle_vao);
 
@@ -897,69 +903,11 @@ void application::draw_refactor()
         if (mode == app_mode::DRAW) {
             glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         }
-        else {
+        if (mode == app_mode::ERASER) {
             glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
         }
         graphics::bind_frame_buffer(canvas.buffer);
         graphics::set_viewport(0, 0, canvas.width, canvas.height);
-
-        //graphics::bind_vertex_array(circle_vao);
-        //circle_shader.use_shader();
-        //circle_shader.set_int("u_is_ring", 0);
-
-        //circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
-
-        // Draw brush stroke points
-        //for (std::size_t i{}; i<stroke_history[last_stroke_index].brush_points.size(); ++i) {
-        //    const auto& pos {stroke_history[last_stroke_index].brush_points[i]};
-        //    math::mat4f m {math::translate(pos.x, pos.y, 0.0f)*
-        //                   math::scale(2.0f*info.brush_size, 2.0f*info.brush_size, 1.0f)};
-        //    circle_shader.set_mat4("u_mvp", canvas.projection*m);
-        //    circle_shader.set_float("u_radius", info.brush_size);
-        //    circle_shader.set_vec2("u_center", pos);
-        //    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-        //}
-
-        //std::vector<math::vec2f> samples;
-        //if (mode != app_mode::DRAW) {
-        //    glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
-        //    graphics::bind_vertex_array(circle_vao);
-
-        //    math::mat4f m {math::translate(eraser_pos.x, eraser_pos.y, 0.0f)*
-        //                   math::scale(2.0f*info.brush_size, 2.0f*info.brush_size, 1.0f)};
-
-        //    eraser_shader.use_shader();
-        //    eraser_shader.set_mat4("u_mvp", canvas.projection*m);
-        //    eraser_shader.set_float("u_radius", info.brush_size);
-        //    eraser_shader.set_vec2("u_center", eraser_pos);
-        //    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-        //}
-
-        //if (debugging) {
-        //    std::vector<math::vec2f> ps;
-        //    if (stroke_history[last_stroke_index].brush_points.size() >= 4)
-        //        ps = {stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-1], stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-2], stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-3], stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-4]};
-        //    else if (stroke_history[last_stroke_index].brush_points.size() == 3)
-        //        ps = {stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-1], stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-2], stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-3]};
-        //    else if (stroke_history[last_stroke_index].brush_points.size() == 2)
-        //        ps = {stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-1], stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-2]};
-        //    else if (stroke_history[last_stroke_index].brush_points.size() == 1)
-        //        ps = {stroke_history[last_stroke_index].brush_points[stroke_history[last_stroke_index].brush_points.size()-1]};
-        //    for (const auto& p:ps) {
-        //        graphics::bind_vertex_array(circle_vao);
-
-        //        math::mat4f m {math::translate(p.x, p.y, 0.0f)*
-        //                       math::scale(2.0f*(info.brush_size+3.0f), 2.0f*(info.brush_size+3.0f), 1.0f)};
-
-        //        circle_shader.use_shader();
-        //        circle_shader.set_int("u_is_ring", 0);
-        //        circle_shader.set_mat4("u_mvp", canvas.projection*m);
-        //        circle_shader.set_float("u_radius", info.brush_size+3.0f);
-        //        circle_shader.set_vec2("u_center", p);
-        //        circle_shader.set_vec4("u_color", math::vec4f{1.0f, 0.0f, 0.0f, 1.0f});
-        //        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-        //    }
-        //}
 
         // Special case where we don't move mouse and only draw a point.
         // No interpolation needed. Just draw single brush point.
@@ -995,15 +943,9 @@ void application::draw_refactor()
             circle_batcher_shader.set_mat4("u_mvp", canvas.projection);
             circle_batcher_shader.set_float("u_aa", info.current_aa);
             graphics::draw_circles(samples, circle_batcher_shader);
-            //std::vector<graphics::quad> samples;
-            //for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=0.1f) {
-            //    samples.emplace_back(graphics::quad{get_point_on_path(ps, t), {info.brush_size, info.brush_size}, {0.0f, 0.0f, 0.0f}});
-            //}
-            //colored_quad_shader.set_mat4("u_mvp", canvas.projection);
-            //graphics::draw_quads(samples, colored_quad_shader);
 
             // SINCE I OPTIMIZED RENDERING BY ONLY TAKING LAST 4 CONTROL POINTS,
-            // I CAN USE A LOT SMALLER STEP AND NO NEED FOR LINES?????
+            // I CAN USE A LOT SMALLER STEP AND NO NEED FOR LINES
 
             // treat lines as rotated quads where thickness == quad height
             //std::vector<graphics::line> lines;
@@ -1013,7 +955,6 @@ void application::draw_refactor()
             //    lines.emplace_back(graphics::line{samples[i-1].center, samples[i].center, info.brush_size, {0.0f, 1.0f, 0.0f}});
             //}
             //ImGui::Text("lines - %zu", lines.size());
-
             //colored_quad_shader.set_mat4("u_mvp", canvas.projection);
             //graphics::draw_lines(lines, colored_quad_shader);
         }
@@ -1057,12 +998,133 @@ void application::draw_refactor()
                 circle_shader.use_shader();
                 circle_shader.set_int("u_is_ring", 0);
                 circle_shader.set_mat4("u_mvp", window_projection*cam2d.view*m);
-                circle_shader.set_float("u_radius", info.resize_button_radius);
-                circle_shader.set_vec2("u_center", pos);
+                circle_shader.set_float("u_radius", info.resize_button_radius*cam2d.zoom_scale);
+                circle_shader.set_vec2("u_center", (cam2d.view*math::vec4f{pos, 0.0f, 1.0f}).xy());
                 circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
                 circle_shader.set_float("u_aa", 0.0f);
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
             }
+
+            const auto offset_x {info.new_width -canvas.width };
+            const auto offset_y {info.new_height-canvas.height};
+            const auto& cw {canvas.width};
+            const auto& ch {canvas.height};
+            std::vector<graphics::line> resize_lines;
+            switch (info.resize_button_index) {
+                case 0: {
+                    const auto p1 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y-(ch*0.5f+offset_y)}};
+                    const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
+                    const auto p3 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
+
+                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                    resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
+                    }
+                    if (offset_y > 0) {
+                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                    }
+                } break;
+                case 1: {
+                    const auto p1 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
+                    const auto p2 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
+                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p3 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
+                        const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
+                        resize_lines.emplace_back(graphics::line{p2, p4, 1.0f});
+                    }
+                } break;
+                case 2: {
+                    const auto p1 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y+(ch*0.5f+offset_y)}};
+                    const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
+                    const auto p3 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
+
+                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                    resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
+                    }
+                    if (offset_y > 0) {
+                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                    }
+                } break;
+                case 3: {
+                    const auto p1 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
+                    const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
+                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                    if (offset_y > 0) {
+                        const auto p3 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
+                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p3, p1, 1.0f});
+                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                    }
+                } break;
+                case 4: {
+                    const auto p1 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y+(ch*0.5f+offset_y)}};
+                    const auto p2 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
+                    const auto p3 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
+
+                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                    resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
+                    }
+                    if (offset_y > 0) {
+                        const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                    }
+                } break;
+                case 5: {
+                    const auto p1 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
+                    const auto p2 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
+                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p3 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
+                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
+                        resize_lines.emplace_back(graphics::line{p2, p4, 1.0f});
+                    }
+                } break;
+                case 6: {
+                    const auto p1 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y-(ch*0.5f+offset_y)}};
+                    const auto p2 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
+                    const auto p3 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
+
+                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                    resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
+                    if (offset_x > 0) {
+                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
+                    }
+                    if (offset_y > 0) {
+                        const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                    }
+                } break;
+                case 7: {
+                    const auto p1 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
+                    const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
+                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                    if (offset_y > 0) {
+                        const auto p3 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
+                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p3, p1, 1.0f});
+                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                    }
+                } break;
+                default:
+                    break;
+            }
+
+            colored_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view);
+            graphics::draw_lines(resize_lines, colored_quad_shader);
         }
     }
 }
@@ -1368,231 +1430,6 @@ void application::update([[maybe_unused]]float dt)
 /*
 void application::draw()
 {
-    // Clear resized buffer and copy all contents from old to new.
-    // Then swap struct info as well.
-    if (info.resized) {
-        temp_canvas.width = info.new_width;
-        temp_canvas.height = info.new_height;
-        // I do need these to clear to BG color.
-        // Or we can manually update pixels on cpu. Kinda annoying and need to be careful
-        // with texture format
-        graphics::bind_frame_buffer(temp_canvas.buffer);
-        graphics::set_viewport(0, 0, temp_canvas.width, temp_canvas.height);
-        graphics::clear_buffer_color(temp_canvas.buffer.id, canvas.bg_color);
-
-        const auto w {std::min(temp_canvas.width, canvas.width)};
-        const auto h {std::min(temp_canvas.height, canvas.height)};
-
-        int dst_x {};
-        int dst_y {};
-        int src_x {};
-        int src_y {};
-        int dw {info.new_width-canvas.width};
-        int dh {info.new_height-canvas.height};
-        switch (info.resize_button_index) {
-            case 0:
-                if (dw > 0) dst_x = dw;
-                else        src_x = -dw;
-                if (dh > 0) dst_y = dh;
-                else        src_y = -dh;
-                canvas.pos += vec2{-dw*0.5f, -dh*0.5f};
-                break;
-            case 1: 
-            case 2:
-                if (dw > 0) dst_x = dw;
-                else        src_x = -dw;
-                canvas.pos += vec2{-dw*0.5f, dh*0.5f};
-                break;
-            case 3:
-            case 4:
-            case 5:
-                canvas.pos += vec2{dw*0.5f, dh*0.5f};
-                break;
-            case 6: 
-            case 7:
-                if (dh > 0) dst_y = dh;
-                else        src_y = -dh;
-                canvas.pos += vec2{dw*0.5f, -dh*0.5f};
-                break;
-            default:
-                break;
-        }
-
-        glCopyImageSubData(canvas.texture.id, GL_TEXTURE_2D , 0, src_x, src_y, 0,
-                           temp_canvas.texture.id, GL_TEXTURE_2D, 0, dst_x, dst_y, 0, 
-                           w, h, 1);
-
-        std::swap(temp_canvas.buffer.id, canvas.buffer.id);
-        std::swap(temp_canvas.texture.id, canvas.texture.id);
-        std::swap(temp_canvas.width, canvas.width);
-        std::swap(temp_canvas.height, canvas.height);
-        canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
-
-        info.resized = false;
-        info.resize_button_index = -1;
-    }
-
-    // Only draw if we are doing brush strokes.
-    if (info.should_draw) {
-        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        graphics::bind_frame_buffer(canvas.buffer);
-        graphics::set_viewport(0, 0, canvas.width, canvas.height);
-
-        graphics::bind_vertex_array(circle_vao);
-        circle_shader.use_shader();
-        circle_shader.set_int("u_is_ring", 0);
-
-        {
-            auto [r, g, b] {pen_.brush_color};
-            if (imgui_.eraser_selected) {
-                r = canvas.bg_color.r;
-                g = canvas.bg_color.g;
-                b = canvas.bg_color.b;
-            }
-            circle_shader.set_vec4("u_color", vec4{r, g, b, 1.0f});
-        }
-
-        // Draw brush stroke points
-        for (std::size_t i{}; i<pen_.brush_points.size(); ++i) {
-            const auto& pos {pen_.brush_points[i].p};
-            auto r {pen_.brush_points[i].r};
-            if (imgui_.eraser_selected) r = eraser_.r;
-            math::mat4f m {math::translate(pos.x, pos.y, 0.0f)*
-                           math::scale(2*r, 2*r, 1.0f)};
-            circle_shader.set_mat4("u_mvp", canvas.projection*m);
-            circle_shader.set_float("u_radius", r);
-            circle_shader.set_vec2("u_center_world", pos.x, pos.y);
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-        }
-
-        std::vector<brush_point> samples;
-        for (float t{}; t<static_cast<float>(pen_.brush_points.size())-3.0f; t+=0.2f) {
-            samples.emplace_back(get_point_on_path(pen_.brush_points, t));
-        }
-
-        // Draw interpolated sample points on stroke points
-        for (std::size_t i{}; i<samples.size(); ++i) {
-            auto r {samples[i].r};
-            if (imgui_.eraser_selected) r = eraser_.r;
-            math::mat4f m {math::translate(samples[i].p.x, samples[i].p.y, 0.0f)*
-                           math::scale(r*2, r*2, 1.0f)};
-            circle_shader.set_mat4("u_mvp", canvas.projection*m);
-            circle_shader.set_float("u_radius", r);
-            circle_shader.set_vec2("u_center_world", samples[i].p.x, samples[i].p.y);
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-        }
-
-        // Draw lines between interpolated points
-
-        // DRAWS LINES BETWEEN MOUSE POINTS
-
-        auto add_line = [this](const brush_point& p1, const brush_point& p2) {
-            const auto& x1 {p1.p.x};
-            const auto& y1 {p1.p.y};
-            const auto& t1 {p1.r};
-            const auto& x2 {p2.p.x};
-            const auto& y2 {p2.p.y};
-            const auto& t2 {p2.r};
-
-            const float vec_x {x2-x1};
-            const float vec_y {y2-y1};
-            const float len {std::sqrt(vec_x*vec_x+vec_y*vec_y)};
-            const float dir_x {vec_x/len};
-            const float dir_y {vec_y/len};
-            const float dir_x_90 {-dir_y};
-            const float dir_y_90 {dir_x};
-
-            const float lower_left_x {x1 - t1*dir_x_90};
-            const float lower_left_y {y1 - t1*dir_y_90};
-
-            const float upper_left_x {x1 + t1*dir_x_90};
-            const float upper_left_y {y1 + t1*dir_y_90};
-
-            const float upper_right_x {x2 + t2*dir_x_90};
-            const float upper_right_y {y2 + t2*dir_y_90};
-
-            const float lower_right_x {x2 - t2*dir_x_90};
-            const float lower_right_y {y2 - t2*dir_y_90};
-
-            auto [r, g, b] {pen_.brush_color};
-            if (imgui_.eraser_selected) {
-                r = canvas.bg_color.r;
-                g = canvas.bg_color.g;
-                b = canvas.bg_color.b;
-            }
-            line_batcher.lines_data.push_back({{lower_left_x,  lower_left_y }, {r, g, b, 1.0f}});
-            line_batcher.lines_data.push_back({{upper_left_x,  upper_left_y }, {r, g, b, 1.0f}});
-            line_batcher.lines_data.push_back({{upper_right_x, upper_right_y}, {r, g, b, 1.0f}});
-            line_batcher.lines_data.push_back({{lower_right_x, lower_right_y}, {r, g, b, 1.0f}});
-        };
-
-        for (std::size_t i{1}; i<samples.size(); ++i) {
-            const auto& x1 {samples[i-1].p.x};
-            const auto& y1 {samples[i-1].p.y};
-            const auto& t1 {samples[i-1].r};
-            const auto& x2 {samples[i].p.x};
-            const auto& y2 {samples[i].p.y};
-            const auto& t2 {samples[i].r};
-
-            const float vec_x {x2-x1};
-            const float vec_y {y2-y1};
-            const float len {std::sqrt(vec_x*vec_x+vec_y*vec_y)};
-            const float dir_x {vec_x/len};
-            const float dir_y {vec_y/len};
-            const float dir_x_90 {-dir_y};
-            const float dir_y_90 {dir_x};
-
-            const float lower_left_x {x1 - t1*dir_x_90};
-            const float lower_left_y {y1 - t1*dir_y_90};
-
-            const float upper_left_x {x1 + t1*dir_x_90};
-            const float upper_left_y {y1 + t1*dir_y_90};
-
-            const float upper_right_x {x2 + t2*dir_x_90};
-            const float upper_right_y {y2 + t2*dir_y_90};
-
-            const float lower_right_x {x2 - t2*dir_x_90};
-            const float lower_right_y {y2 - t2*dir_y_90};
-
-            auto [r, g, b] {pen_.brush_color};
-            if (imgui_.eraser_selected) {
-                r = canvas.bg_color.r;
-                g = canvas.bg_color.g;
-                b = canvas.bg_color.b;
-            }
-            line_batcher.lines_data.push_back({{lower_left_x,  lower_left_y }, {r, g, b, 1.0f}});
-            line_batcher.lines_data.push_back({{upper_left_x,  upper_left_y }, {r, g, b, 1.0f}});
-            line_batcher.lines_data.push_back({{upper_right_x, upper_right_y}, {r, g, b, 1.0f}}); 
-            line_batcher.lines_data.push_back({{lower_right_x, lower_right_y}, {r, g, b, 1.0f}});
-        }
-        if (pen_.brush_points.size() >= 2 && samples.size() >= 2) {
-            add_line({{pen_.brush_points[0].p.x, pen_.brush_points[0].p.y}, pen_.brush_points[0].r}, samples[0]);
-            add_line(samples.back(), {{pen_.brush_points.back().p.x, pen_.brush_points.back().p.y}, pen_.brush_points.back().r});
-        }
-
-        graphics::bind_vertex_array(line_vao);
-        line_shader.use_shader();
-        line_shader.set_mat4("u_mvp", canvas.projection);
-
-        int line_count {static_cast<int>((line_batcher.lines_data.size()/4))};
-        int iterations {line_count / MAX_PER_BATCH};
-        int leftover   {line_count - (MAX_PER_BATCH*iterations)};
-        for (int i{}; i<iterations; ++i) {
-            graphics::buffer_upload_subdata(line_vbo, 0, 4*MAX_PER_BATCH*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+i*MAX_PER_BATCH*4);
-            glDrawElements(GL_TRIANGLES, MAX_PER_BATCH*6, GL_UNSIGNED_INT, nullptr);
-        }
-        if (leftover > 0) {
-            graphics::buffer_upload_subdata(line_vbo, 0, 4*static_cast<u32>(leftover)*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+iterations*MAX_PER_BATCH*4);
-            glDrawElements(GL_TRIANGLES, leftover*6, GL_UNSIGNED_INT, nullptr);
-        }
-        line_batcher.lines_data.clear();
-        if (pen_.brush_points.size() > 1024) pen_.brush_points.clear(); // INVESTIGATE THIS!!!!
-
-        if (info.should_empty) {
-            pen_.brush_points.clear();
-        }
-    }
-
     // SELECTION MODE THINGY
     {
         if (info.in_selection_mode && selection_info.is_selecting) {
@@ -1714,165 +1551,6 @@ void application::draw()
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
             }
         }
-        
-        if (info.in_resize_mode) {
-            graphics::bind_vertex_array(canvas_vao);
-            // line shader is basically colored quad shader, RENAME later
-            line_shader.use_shader();
-            constexpr int resize_button_len {15};
-            for (const auto& [dx, dy]:resize_dirs) {
-                math::mat4f quad_model {math::translate(pos.x+(0.5f*cw*zoom_scale*dx), pos.y+(0.5f*ch*zoom_scale*dy), 0.0f)*
-                                        math::scale(zoom_scale*resize_button_len, zoom_scale*resize_button_len, 1.0f)};
-                line_shader.set_mat4("u_mvp", window_projection*quad_model);
-                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-            }
-        }
-
-        if (info.resizing) {
-            graphics::bind_vertex_array(line_vao);
-            line_shader.use_shader();
-            line_shader.set_mat4("u_mvp", window_projection);
-
-            const auto offset_x {info.new_width-canvas.width};
-            const auto offset_y {info.new_height-canvas.height};
-
-            std::vector<line> resize_lines; resize_lines.reserve(4);
-            switch (info.resize_button_index) {
-                case 0: {
-                    const auto p1 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
-                    const auto p2 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
-                    const auto p3 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-
-                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
-                    resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p4 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p4, p3, {}, 1.0f});
-                    }
-                    if (offset_y > 0) {
-                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
-                    }
-                } break;
-                case 1: {
-                    const auto p1 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-                    const auto p2 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p3 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-                        const auto p4 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
-                        resize_lines.emplace_back(line{p2, p4, {}, 1.0f});
-                    }
-                } break;
-                case 2: {
-                    const auto p1 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
-                    const auto p2 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
-                    const auto p3 {vec2{pos.x-(cw*0.5f+offset_x)*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-
-                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
-                    resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p4 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p4, p3, {}, 1.0f});
-                    }
-                    if (offset_y > 0) {
-                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
-                    }
-                } break;
-                case 3: {
-                    const auto p1 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
-                    const auto p2 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
-                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
-                    if (offset_y > 0) {
-                        const auto p3 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p3, p1, {}, 1.0f});
-                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
-                    }
-                } break;
-                case 4: {
-                    const auto p1 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
-                    const auto p2 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+(ch*0.5f+offset_y)*zoom_scale}};
-                    const auto p3 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-
-                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
-                    resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p4, p3, {}, 1.0f});
-                    }
-                    if (offset_y > 0) {
-                        const auto p4 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
-                    }
-                } break;
-                case 5: {
-                    const auto p1 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-                    const auto p2 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p3 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
-                        resize_lines.emplace_back(line{p2, p4, {}, 1.0f});
-                    }
-                } break;
-                case 6: {
-                    const auto p1 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
-                    const auto p2 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
-                    const auto p3 {vec2{pos.x+(cw*0.5f+offset_x)*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-
-                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
-                    resize_lines.emplace_back(line{p1, p3, {}, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y+ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p4, p3, {}, 1.0f});
-                    }
-                    if (offset_y > 0) {
-                        const auto p4 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
-                    }
-                } break;
-                case 7: {
-                    const auto p1 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
-                    const auto p2 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-(ch*0.5f+offset_y)*zoom_scale}};
-                    resize_lines.emplace_back(line{p1, p2, {}, 1.0f});
-                    if (offset_y > 0) {
-                        const auto p3 {vec2{pos.x-cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-                        const auto p4 {vec2{pos.x+cw*0.5f*zoom_scale, pos.y-ch*0.5f*zoom_scale}};
-                        resize_lines.emplace_back(line{p3, p1, {}, 1.0f});
-                        resize_lines.emplace_back(line{p4, p2, {}, 1.0f});
-                    }
-                } break;
-                default:
-                    break;
-            }
-
-            for (const auto& line:resize_lines) {
-                for (const auto& l:generic_add_line(line)) {
-                    line_batcher.lines_data.emplace_back(l);
-                }
-            }
-
-            // using line batcher here as well. Think of a better way in the future.
-            {
-                int line_count {static_cast<int>((line_batcher.lines_data.size()/4))};
-                int iterations {line_count / MAX_PER_BATCH};
-                int leftover   {line_count - (MAX_PER_BATCH*iterations)};
-                for (int i{}; i<iterations; ++i) {
-                    graphics::buffer_upload_subdata(line_vbo, 0, 4*MAX_PER_BATCH*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+i*MAX_PER_BATCH*4);
-                    glDrawElements(GL_TRIANGLES, MAX_PER_BATCH*6, GL_UNSIGNED_INT, nullptr);
-                }
-                if (leftover > 0) {
-                    graphics::buffer_upload_subdata(line_vbo, 0, 4*static_cast<u32>(leftover)*line_batcher::vertex_t::stride, line_batcher.lines_data.data()+iterations*MAX_PER_BATCH*4);
-                    glDrawElements(GL_TRIANGLES, leftover*6, GL_UNSIGNED_INT, nullptr);
-                }
-                line_batcher.lines_data.clear();
-            }
-        }
-
     }
 }
 */

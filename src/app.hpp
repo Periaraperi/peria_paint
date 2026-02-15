@@ -24,12 +24,6 @@ struct brush_point {
     float r {};
 };
 
-struct line {
-    math::vec2f p1 {}, p2 {};
-    math::vec3f color {};
-    float thickness {};
-};
-
 namespace sdl {
 
 struct sdl_initializer {
@@ -132,7 +126,8 @@ private:
 
     enum class app_mode {
         DRAW = 0,
-        RESIZE = 1
+        ERASER,
+        RESIZE
     } mode {app_mode::DRAW};
 
     struct draw_region {
@@ -149,35 +144,17 @@ private:
     draw_region canvas {};
     draw_region temp_canvas {};
 
-    math::vec2f eraser_pos;
-
     struct brush_stroke {
         std::vector<math::vec2f> brush_points; // stroke control points
         float aa {1.0f};
         float brush_size {10.0f};
+        app_mode mode; // either eraser or brush
     };
     std::vector<brush_stroke> stroke_history; // indexing starts from 1
     std::size_t last_stroke_index {};
     std::size_t last_valid_redo_index {};
     bool should_undo {};
     bool should_redo {};
-
-    //struct temp_canvas {
-    //    gl::texture2d texture;
-    //    gl::frame_buffer buffer;
-    //    int width  {};
-    //    int height {};
-    //} temp_canvas;
-
-    //struct pen_tool {
-    //    std::vector<brush_point> brush_points; // for brush stroke
-    //    std::array<float, 3> brush_color {};
-    //    float brush_size {10.0f};
-    //} pen_;
-
-    //struct eraser {
-    //    float r {10.0f};
-    //} eraser_;
 
     struct info {
         // brush stroke rendering information
@@ -207,17 +184,6 @@ private:
     //    vec2 p1 {};
     //    vec2 p2 {};
     //} selection_info;
-
-    //std::array<veci2, 8> resize_dirs {{
-    //    {-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}
-    //}};
-
-    //static constexpr int MAX_PER_BATCH {4096}; // count
-
-    //struct line_batcher {
-    //    std::vector<gl::vertex<gl::pos2, gl::color4>> lines_data;
-    //    using vertex_t = typename gl::vertex<gl::pos2, gl::color4>;
-    //} line_batcher;
 };
 
 /*
