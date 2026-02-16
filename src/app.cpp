@@ -773,11 +773,11 @@ void application::draw_refactor()
     auto render_stroke = [this](const stroke& stroke) {
         std::vector<graphics::circle> samples;
         for (float t{}; t<static_cast<float>(stroke.brush_points.size())-3.0f; t+=0.01f) {
-            samples.emplace_back(graphics::circle{get_point_on_path(stroke.brush_points, t), {}, info.current_brush_size});
+            samples.emplace_back(graphics::circle{get_point_on_path(stroke.brush_points, t), {}, stroke.brush_size});
         }
 
         circle_batcher_shader.set_mat4("u_mvp", canvas.projection);
-        circle_batcher_shader.set_float("u_aa", info.current_aa);
+        circle_batcher_shader.set_float("u_aa", stroke.aa);
         graphics::draw_circles(samples, circle_batcher_shader);
     };
 
@@ -866,7 +866,7 @@ void application::draw_refactor()
             for (std::size_t i{stroke.brush_points.size()-4}; i<stroke.brush_points.size(); ++i) {
                 ps.emplace_back(stroke.brush_points[i]);
             }
-            render_stroke({std::move(ps), stroke.brush_size, stroke.aa, stroke.type});
+            render_stroke({std::move(ps), stroke.aa, stroke.brush_size, stroke.type});
         }
 
         if (info.drawing_finished) {
