@@ -222,11 +222,8 @@ application::application(application_settings&& settings)
         graphics::init_quad_batcher();
     }
 
-    int mx_sz {};
-    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &mx_sz);
-    std::println("MAX TEX SIZE {}", mx_sz);
-
     input_manager::initialize();
+
     {
         peria::graphics::set_vsync(true);
         peria::graphics::set_relative_mouse(sdl_initializer_.window, false);
@@ -311,7 +308,6 @@ application::application(application_settings&& settings)
             graphics::vao_connect_ibo(resize_button_quad_vao, quad_ibo);
         }
 
-
         // CANVAS FRAME BUFFER AND COLOR ATTACHMENTS
         {
             glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
@@ -325,36 +321,15 @@ application::application(application_settings&& settings)
             if (status != GL_FRAMEBUFFER_COMPLETE) {
                 std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
             }
-
-            //glNamedFramebufferTexture(transparent_canvas.buffer.id, GL_COLOR_ATTACHMENT0, transparent_canvas.texture.id, 0);
-            //status = glCheckNamedFramebufferStatus(transparent_canvas.buffer.id, GL_FRAMEBUFFER);
-            //if (status != GL_FRAMEBUFFER_COMPLETE) {
-            //    std::println("FrameBuffer with id {} is incomplete\n {}", transparent_canvas.buffer.id, status);
-            //}
-
         }
 
         textured_quad_shader.set_int("u_canvas_texture", 0);
 
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
         canvas.pos = 0.5f*peria::math::vec2f{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)};
-        temp_canvas.width  = canvas.width;
-        temp_canvas.height = canvas.height;
-
-        //transparent_canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
-        //transparent_canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
-        //info.new_width = canvas.width;
-        //info.new_height = canvas.height;
-        //transparent_canvas.width = canvas.width;
-        //transparent_canvas.height = canvas.height;
     }
 
-    //pen_.brush_points.reserve(2048);
-    // times 4 because each line is represented as a quad which is 2 triangles with total of 4 verts
-    //line_batcher.lines_data.reserve(MAX_PER_BATCH*4);
-
     glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
     // just clear canvas to default color before doing anything
     graphics::bind_frame_buffer(canvas.buffer);
@@ -675,6 +650,7 @@ void application::draw_refactor()
     ImGui::Text("last stroke idx %zu", stroke_history.last_stroke_index);
     ImGui::Text("last valid redo idx %zu", stroke_history.last_valid_redo_index);
     ImGui::Text("size %zu", stroke_history.strokes.size());
+    ImGui::Text("canvas dims %d, %d", canvas.width, canvas.height);
 
     // Clear resized buffer and copy all contents from old to new.
     // Then swap struct info as well.
@@ -683,6 +659,7 @@ void application::draw_refactor()
         temp_canvas.height = info.new_height;
         graphics::bind_frame_buffer(temp_canvas.buffer);
         graphics::set_viewport(0, 0, temp_canvas.width, temp_canvas.height);
+        graphics::clear_buffer_color(temp_canvas.buffer.id, graphics::color{0.0f, 0.0f, 0.0f, 0.0f});
 
         const auto w {std::min(temp_canvas.width,  canvas.width)};
         const auto h {std::min(temp_canvas.height, canvas.height)};
@@ -691,6 +668,7 @@ void application::draw_refactor()
         math::vec2f src {};
         float dw {static_cast<float>(info.new_width-canvas.width)};
         float dh {static_cast<float>(info.new_height-canvas.height)};
+        math::vec2f canvas_old_lower_left {canvas.pos-math::vec2f{canvas.width*0.5f, canvas.height*0.5f}};
         switch (info.resize_button_index) {
             case 0:
                 if (dw > 0) dst.x =  dw;
@@ -724,21 +702,23 @@ void application::draw_refactor()
                            temp_canvas.texture.id, GL_TEXTURE_2D, 0, static_cast<int>(dst.x), static_cast<int>(dst.y), 0, 
                            w, h, 1);
 
-        //glBlitNamedFramebuffer(canvas.buffer.id, temp_canvas.buffer.id, 
-        //        static_cast<int>(src.x), static_cast<int>(src.y),
-        //        w, h, 
-        //        static_cast<int>(dst.x), static_cast<int>(dst.y), 
-        //        w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-
-
         std::swap(temp_canvas.buffer.id, canvas.buffer.id);
         std::swap(temp_canvas.texture.id, canvas.texture.id);
         std::swap(temp_canvas.width, canvas.width);
         std::swap(temp_canvas.height, canvas.height);
+
+        math::vec2f canvas_new_lower_left {canvas.pos-math::vec2f{canvas.width*0.5f, canvas.height*0.5f}};
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
 
         info.resized = false;
         info.resize_button_index = -1;
+
+        // offset brush control points so that undo/redo doesn't break after resizing.
+        for (auto& s:stroke_history.strokes) {
+            for (auto& p:s.brush_points) {
+                p += (canvas_old_lower_left - canvas_new_lower_left);
+            }
+        }
     }
 
     if (stroke_history.should_undo) {
