@@ -198,13 +198,13 @@ application::application(application_settings&& settings)
      colored_quad_shader{"./assets/shaders/quad_colored.vert", "./assets/shaders/quad_colored.frag"},
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
      canvas_bg{gl::texture2d{graphics::create_texture2d_from_color(graphics::WHITE)}},
-     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(graphics::get_screen_size().w*0.75f), 
-                                                     static_cast<int>(graphics::get_screen_size().h*0.75f),
+     canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(app_settings_.window_width*0.75f), 
+                                                     static_cast<int>(app_settings_.window_height*0.75f),
                                                      GL_RGBA32F)},
             gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, 
             {}, 
-            static_cast<int>(graphics::get_screen_size().w*0.75f), 
-            static_cast<int>(graphics::get_screen_size().h*0.75f), 
+            static_cast<int>(app_settings_.window_width*0.75f),
+            static_cast<int>(app_settings_.window_height*0.75f),
             {},
             {}
      },
@@ -491,7 +491,7 @@ void application::run()
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         SDL_GL_SwapWindow(sdl_initializer_.window);
-        
+
         {
             std::string title {"peria_paint | "+std::to_string(elapsed_time)+" "+std::to_string(dt)};
             if (graphics::is_vsync()) title += " VSYNC: ON";

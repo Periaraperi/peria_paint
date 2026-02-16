@@ -13,6 +13,6 @@ void main()
     vec2 p = gl_FragCoord.xy;
     p -= center;
     float plen = length(p);
-    float s = smoothstep(radius, radius-u_aa, plen);
+    float s = smoothstep(radius, radius*0.20f, plen);
     final_color = vec4(color, s);
 }

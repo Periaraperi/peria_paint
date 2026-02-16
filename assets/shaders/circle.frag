@@ -22,7 +22,7 @@ void main()
         final_color = vec4(u_color.rgb*s1*s2, s1*s2);
     }
     else {
-        float s = smoothstep(u_radius, u_radius-u_aa, plen);
+        float s = smoothstep(u_radius, u_radius*0.95f, plen);
         final_color = vec4(u_color.rgb, s);
     }
 }
