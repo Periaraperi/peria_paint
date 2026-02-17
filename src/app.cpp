@@ -9,6 +9,7 @@
 #include <imgui_impl_opengl3.h>
 
 #include <print>
+#include <queue>
 #include <utility>
 
 #include "input_manager.hpp"
@@ -334,7 +335,8 @@ application::application(application_settings&& settings)
     // just clear canvas to default color before doing anything
     graphics::bind_frame_buffer(canvas.buffer);
     graphics::set_viewport(0, 0, canvas.width, canvas.height);
-    graphics::clear_buffer_color(canvas.buffer.id, graphics::color{0.0f, 0.0f, 0.0f, 0.0f});
+    const auto& [r, g, b] {info.bg_color};
+    graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 0.0f});
 
     stroke_history.strokes.emplace_back();
 }
@@ -431,6 +433,7 @@ void application::run()
 
         if (imgui_.show_tools) {
             if (ImGui::Begin("tools")) {
+                if (ImGui::ColorPicker3("brush_color", info.current_color.data())) {}
                 if (ImGui::SliderFloat("brush_size", &info.current_brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {}
                 if (ImGui::Button("center")) {
                     cam2d.pos = {};
@@ -443,6 +446,10 @@ void application::run()
                 if (ImGui::Button("eraser")) {
                     current_mode = app_mode::ERASER;
                     current_brush_type = brush_type::ERASER;
+                }
+                if (ImGui::Button("bucket")) {
+                    current_mode = app_mode::DRAW;
+                    current_brush_type = brush_type::BUCKET;
                 }
             }
             ImGui::End();
@@ -497,6 +504,74 @@ void application::update([[maybe_unused]]float dt)
         case app_mode::DRAW:
         case app_mode::ERASER:
         {
+            if (current_brush_type == brush_type::BUCKET && inside_canvas && im->mouse_pressed(mouse_button::LEFT)) {
+                glPixelStorei(GL_UNPACK_ROW_LENGTH, canvas.width);
+                std::vector<float> pixels(static_cast<std::size_t>(canvas.width*canvas.height*4), 0);
+                glGetTextureImage(canvas.texture.id, 0, GL_RGBA, GL_FLOAT, static_cast<int>(pixels.size()*sizeof(float)), &pixels[0]);
+
+                // mouse position relative to canvas cast to ints to get pixel coords. (lower left of canvas is zero zero)
+                const math::vec2i mp {static_cast<int>(mouse_world.x-canvas_world_lower_left.x), static_cast<int>(mouse_world.y-canvas_world_lower_left.y)};
+
+                std::vector<bool> visited(static_cast<std::size_t>(canvas.width)*static_cast<std::size_t>(canvas.height), false);
+
+                std::queue<math::vec2i> q;
+                q.push(mp);
+
+                std::vector<math::vec2i> to_color; 
+                to_color.reserve(visited.size()/2); // approx space
+
+                // reuse brush color for bucket tool
+                math::vec3f new_color {info.current_color[0], info.current_color[1], info.current_color[2]};
+
+                math::vec3f old_color {
+                    pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 0)],
+                    pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 1)],
+                    pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 2)]
+                };
+
+                auto float_eq = [](float a, float b) {
+                    constexpr float epsilon {0.000001f};
+                    return std::abs(a-b) <= (std::max(a, b)*epsilon);
+                };
+
+                while (!q.empty()) {
+                    const auto coord {q.front()}; q.pop();
+                    if (visited[static_cast<std::size_t>(coord.y*canvas.width+coord.x)]) {
+                        continue;
+                    }
+                    visited[static_cast<std::size_t>(coord.y*canvas.width+coord.x)] = true;
+                    to_color.emplace_back(coord.x, coord.y);
+                    for (int dx{-1}; dx<=1; ++dx) {
+                        for (int dy{-1}; dy<=1; ++dy) {
+                            if (dx == 0 && dy == 0) continue;
+                            const auto x {coord.x + dx};
+                            const auto y {coord.y + dy};
+                            if ((x>=0 && x<canvas.width && y>=0 && y<canvas.height) && 
+                                !visited[static_cast<std::size_t>(y*canvas.width+x)] &&
+                                float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 0)], old_color.x) &&
+                                float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 1)], old_color.y) &&
+                                float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 2)], old_color.z)) {
+                                q.push({x, y});
+                            }
+                        }
+                    }
+                }
+                for (const auto& [x, y]:to_color) {
+                    pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 0)] = new_color.x; 
+                    pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 1)] = new_color.y;
+                    pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 2)] = new_color.z;
+                    pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 3)] = 1.0f;
+                }
+
+                glTextureSubImage2D(canvas.texture.id, 0, 
+                                    0, 0,
+                                    canvas.width, canvas.height,
+                                    GL_RGBA, GL_FLOAT, &pixels[0]);
+                glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); // don't forget this
+                return;
+            }
+            else if (current_brush_type == brush_type::BUCKET) return;
+
             if ((info.should_start_new_stroke && !inside_canvas) ||
                 (info.should_start_new_stroke && (imgui_.is_imgui_captured() || imgui_.is_imgui_hovered()))) break;
             
@@ -520,6 +595,7 @@ void application::update([[maybe_unused]]float dt)
                     strokes[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                     strokes[last_stroke_index].brush_size = info.current_brush_size;
                     strokes[last_stroke_index].aa = info.current_aa;
+                    strokes[last_stroke_index].color = math::vec3f{info.current_color[0], info.current_color[1], info.current_color[2]};
                     strokes[last_stroke_index].type = current_brush_type;
                     info.drawing = true;
                     info.drawing_finished = false;
@@ -529,6 +605,7 @@ void application::update([[maybe_unused]]float dt)
                     strokes[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                     strokes[last_stroke_index].brush_size = info.current_brush_size;
                     strokes[last_stroke_index].aa = info.current_aa;
+                    strokes[last_stroke_index].color = math::vec3f{info.current_color[0], info.current_color[1], info.current_color[2]};
                     strokes[last_stroke_index].type = current_brush_type;
                     info.drawing = true;
                     info.drawing_finished = true;
@@ -548,6 +625,7 @@ void application::update([[maybe_unused]]float dt)
                         strokes[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                         strokes[last_stroke_index].brush_size = info.current_brush_size;
                         strokes[last_stroke_index].aa = info.current_aa;
+                        strokes[last_stroke_index].color = math::vec3f{info.current_color[0], info.current_color[1], info.current_color[2]};
                         strokes[last_stroke_index].type = current_brush_type;
                         last_valid_redo_index = last_stroke_index;
                     }
@@ -619,7 +697,8 @@ void application::draw()
         temp_canvas.height = info.new_height;
         graphics::bind_frame_buffer(temp_canvas.buffer);
         graphics::set_viewport(0, 0, temp_canvas.width, temp_canvas.height);
-        graphics::clear_buffer_color(temp_canvas.buffer.id, graphics::color{0.0f, 0.0f, 0.0f, 0.0f});
+        const auto& [r, g, b] {info.bg_color};
+        graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 0.0f});
 
         const auto w {std::min(temp_canvas.width,  canvas.width)};
         const auto h {std::min(temp_canvas.height, canvas.height)};
@@ -697,7 +776,7 @@ void application::draw()
         circle_shader.set_mat4("u_mvp", canvas.projection*m);
         circle_shader.set_float("u_radius", stroke.brush_size);
         circle_shader.set_vec2("u_center", p);
-        circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
+        circle_shader.set_vec3("u_color", stroke.color);
         circle_shader.set_float("u_aa", stroke.aa);
         circle_shader.use_shader();
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
@@ -721,19 +800,19 @@ void application::draw()
             circle_shader.set_mat4("u_mvp", canvas.projection*m);
             circle_shader.set_float("u_radius", stroke.brush_size);
             circle_shader.set_vec2("u_center", {x, y});
-            circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
+            circle_shader.set_vec3("u_color", stroke.color);
             circle_shader.set_float("u_aa", stroke.aa);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
 
         colored_quad_shader.set_mat4("u_mvp", canvas.projection);
-        graphics::draw_lines({graphics::line{first, last, stroke.brush_size}}, colored_quad_shader);
+        graphics::draw_lines({graphics::line{first, last, stroke.brush_size, stroke.color}}, colored_quad_shader);
     };
 
     auto render_stroke = [this](const stroke& stroke) {
         std::vector<graphics::circle> samples;
         for (float t{}; t<static_cast<float>(stroke.brush_points.size())-3.0f; t+=0.01f) {
-            samples.emplace_back(graphics::circle{get_point_on_path(stroke.brush_points, t), {}, stroke.brush_size});
+            samples.emplace_back(graphics::circle{get_point_on_path(stroke.brush_points, t), stroke.color, stroke.brush_size});
         }
 
         circle_batcher_shader.set_mat4("u_mvp", canvas.projection);
@@ -744,7 +823,8 @@ void application::draw()
     if (stroke_history.should_undo) {
         graphics::bind_frame_buffer(canvas.buffer);
         graphics::set_viewport(0, 0, canvas.width, canvas.height);
-        graphics::clear_buffer_color(canvas.buffer.id, graphics::color{0.0f, 0.0f, 0.0f, 0.0f});
+        const auto& [r, g, b] {info.bg_color};
+        graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 0.0f});
 
         if (stroke_history.last_stroke_index > 0) {
             --stroke_history.last_stroke_index;
@@ -824,7 +904,7 @@ void application::draw()
             for (std::size_t i{stroke.brush_points.size()-4}; i<stroke.brush_points.size(); ++i) {
                 ps.emplace_back(stroke.brush_points[i]);
             }
-            render_stroke({std::move(ps), stroke.aa, stroke.brush_size, stroke.type});
+            render_stroke({std::move(ps), stroke.aa, stroke.brush_size, stroke.color, stroke.type});
         }
 
         if (info.drawing_finished) {
@@ -850,9 +930,12 @@ void application::draw()
         textured_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view*canvas_world_model);
 
         graphics::bind_texture_and_sampler(canvas_bg, canvas.sampler, 0);
+        const auto& [r, g, b] {info.bg_color};
+        textured_quad_shader.set_vec3("u_color_multiplier", {r, g, b});
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
         graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
+        textured_quad_shader.set_vec3("u_color_multiplier", {1.0f, 1.0f, 1.0f});
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
         if (current_mode == app_mode::RESIZE) {
@@ -868,7 +951,7 @@ void application::draw()
                 circle_shader.set_mat4("u_mvp", window_projection*cam2d.view*m);
                 circle_shader.set_float("u_radius", info.resize_button_radius*cam2d.zoom_scale);
                 circle_shader.set_vec2("u_center", (cam2d.view*math::vec4f{pos, 0.0f, 1.0f}).xy());
-                circle_shader.set_vec4("u_color", math::vec4f{0.0f, 0.0f, 0.0f, 1.0f});
+                circle_shader.set_vec3("u_color", math::vec3f{0.0f, 0.0f, 0.0f});
                 circle_shader.set_float("u_aa", 0.0f);
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
             }

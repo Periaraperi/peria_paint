@@ -6,7 +6,7 @@ uniform float u_radius2;
 uniform float u_radius;
 
 uniform vec2 u_center;
-uniform vec4 u_color;
+uniform vec3 u_color;
 
 uniform bool u_is_ring;
 uniform float u_aa;
@@ -23,7 +23,7 @@ void main()
     }
     else {
         float s = smoothstep(u_radius, u_radius*0.95f, plen);
-        final_color = vec4(u_color.rgb, s);
+        final_color = vec4(u_color.rgb*s, s);
     }
 }
 

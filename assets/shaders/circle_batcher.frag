@@ -14,5 +14,5 @@ void main()
     p -= center;
     float plen = length(p);
     float s = smoothstep(radius, radius*0.20f, plen);
-    final_color = vec4(color, s);
+    final_color = vec4(color*s, s);
 }

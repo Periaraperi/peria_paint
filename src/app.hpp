@@ -118,7 +118,8 @@ private:
 
     enum class brush_type {
         PEN = 0,
-        ERASER
+        ERASER,
+        BUCKET
     } current_brush_type {brush_type::PEN};
 
     struct draw_region {
@@ -139,6 +140,7 @@ private:
         std::vector<math::vec2f> brush_points; // stroke control points
         float aa {1.0f};
         float brush_size {10.0f};
+        math::vec3f color {};
         brush_type type;
     };
 
@@ -151,12 +153,14 @@ private:
     } stroke_history;
     
     struct info {
+        std::array<float, 3> bg_color {1.0f, 1.0f, 1.0f};
         // brush stroke rendering information
         bool drawing          {false};
         bool drawing_finished {false};
         bool should_start_new_stroke {true};
         float current_brush_size {5.0f};
         float current_aa {1.0f};
+        std::array<float, 3> current_color {};
 
         // canvas resizing information
         bool resized {false};
