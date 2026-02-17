@@ -401,91 +401,52 @@ void application::run()
         ImGui::NewFrame();
         ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 
-        update_refactor(dt);
-        draw_refactor();
+        update(dt);
+        draw();
 
-        //if (ImGui::BeginMainMenuBar()) {
-        //    if (ImGui::Button("save")) {
-        //        canvas.filename = graphics::write_to_png(canvas.texture, canvas.width, canvas.height, canvas.filename.c_str());
-        //    }
-        //    if (ImGui::BeginMenu("open")) {
-        //        const auto files {get_all_png_images()};
-        //        for (const auto& f:files) {
-        //            if (ImGui::MenuItem(f.c_str())) {
-        //                auto image {graphics::load_png(("./test/"+f).c_str())};
+        if (ImGui::BeginMainMenuBar()) {
+            if (ImGui::Button("tools")) {
+                if (imgui_.show_tools) imgui_.show_tools = false;
+                else                   imgui_.show_tools = true;
+            }
 
-        //                canvas.texture = std::move(image.texture);
-        //                canvas.width = image.width;
-        //                canvas.height = image.height;
-        //                canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+            ImGui::Text("Width %d", canvas.width);
+            ImGui::Text("Height %d", canvas.height);
+            switch (current_mode) {
+                case app_mode::DRAW:
+                    ImGui::Text("Mode - DRAW");
+                    break;
+                case app_mode::ERASER:
+                    ImGui::Text("Mode - ERASER");
+                    break;
+                case app_mode::RESIZE:
+                    ImGui::Text("Mode - RESIZE");
+                    break;
+                default:
+                    break;
+            }
 
-        //                glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
-        //                auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
-        //                if (status != GL_FRAMEBUFFER_COMPLETE) {
-        //                    std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
-        //                }
+            ImGui::EndMainMenuBar();
+        }
 
-        //                canvas.filename = f.substr(0, f.size()-4);
-        //                canvas.pos = 0.5f*vec2{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)}; 
-        //                info.world_offset = {0, 0};
-        //                zoom_scale = 1.0f;
-        //            }
-        //        }
-        //        ImGui::EndMenu();
-        //    }
-
-        //    if (ImGui::Button("tools")) {
-        //        if (imgui_.show_tools) imgui_.show_tools = false;
-        //        else                   imgui_.show_tools = true;
-        //    }
-
-        //    ImGui::Text("Width %d", canvas.width);
-        //    ImGui::Text("Height %d", canvas.height);
-
-        //    ImGui::EndMainMenuBar();
-        //}
-
-        //if (imgui_.show_tools) {
-        //    if (ImGui::Begin("tools")) {
-        //        if (ImGui::ColorPicker3("pen_brush_color", pen_.brush_color.data())) {}
-        //        if (ImGui::SliderFloat("pen_brush_size", &pen_.brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {}
-        //        if (ImGui::SliderFloat("eraser_radius", &eraser_.r, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {}
-        //        if (ImGui::Checkbox("selection", &info.in_selection_mode)) {
-        //            if (info.in_selection_mode) {
-        //                info.in_resize_mode = false;
-        //            }
-        //        }
-        //        if (ImGui::Button("center")) {
-        //            info.world_offset = {0, 0};
-        //            zoom_scale = 1.0f;
-        //            canvas.pos.x = static_cast<float>(app_settings_.window_width)*0.5f;
-        //            canvas.pos.y = static_cast<float>(app_settings_.window_height)*0.5f;
-        //        }
-        //        if (ImGui::Checkbox("pen_brush", &imgui_.pen_selected)) {
-        //            if (imgui_.pen_selected) {
-        //                imgui_.eraser_selected = false;
-        //                imgui_.bucket_selected = false;
-        //            }
-        //        }
-        //        if (ImGui::Checkbox("eraser", &imgui_.eraser_selected)) {
-        //            if (imgui_.eraser_selected) {
-        //                imgui_.pen_selected = false;
-        //                imgui_.bucket_selected = false;
-        //            }
-        //        }
-        //        if (ImGui::Checkbox("bucket", &imgui_.bucket_selected)) {
-        //            if (imgui_.bucket_selected) {
-        //                imgui_.pen_selected = false;
-        //                imgui_.eraser_selected = false;
-        //            }
-        //        }
-        //    }
-        //    ImGui::End();
-
-        //    if (!imgui_.bucket_selected && !imgui_.eraser_selected) {
-        //        imgui_.pen_selected = true;
-        //    }
-        //}
+        if (imgui_.show_tools) {
+            if (ImGui::Begin("tools")) {
+                if (ImGui::SliderFloat("brush_size", &info.current_brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {}
+                if (ImGui::Button("center")) {
+                    cam2d.pos = {};
+                    cam2d.zoom_scale = 1.0f;
+                }
+                if (ImGui::Button("pen")) {
+                    current_mode = app_mode::DRAW;
+                    current_brush_type = brush_type::PEN;
+                }
+                if (ImGui::Button("eraser")) {
+                    current_mode = app_mode::ERASER;
+                    current_brush_type = brush_type::ERASER;
+                }
+            }
+            ImGui::End();
+        }
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -504,10 +465,8 @@ void application::run()
     }
 }
 
-void application::update_refactor([[maybe_unused]]float dt)
+void application::update([[maybe_unused]]float dt)
 {
-    ImGui::SliderFloat("AA", &info.current_aa, 0.0f, 30.0f);
-    ImGui::SliderFloat("brushSize", &info.current_brush_size, 1.0f, 30.0f);
     const auto im {input_manager::instance()};
     if (im->key_pressed(SDL_SCANCODE_B)) {
         current_mode = app_mode::DRAW;
@@ -528,7 +487,7 @@ void application::update_refactor([[maybe_unused]]float dt)
     }
 
     cam2d.update(window_projection);
-    
+
     const math::vec2f mouse_screen {im->get_mouse_gl().x, im->get_mouse_gl().y};
     const math::vec2f mouse_world {cam2d.screen_to_world(mouse_screen, window_projection)};
     const math::vec2f canvas_world_lower_left {canvas.pos-math::vec2{canvas.width*0.5f, canvas.height*0.5f}};
@@ -538,7 +497,8 @@ void application::update_refactor([[maybe_unused]]float dt)
         case app_mode::DRAW:
         case app_mode::ERASER:
         {
-            if (info.new_stroke_start && !inside_canvas) break;
+            if ((info.should_start_new_stroke && !inside_canvas) ||
+                (info.should_start_new_stroke && (imgui_.is_imgui_captured() || imgui_.is_imgui_hovered()))) break;
             
             auto& strokes {stroke_history.strokes};
             auto& last_stroke_index {stroke_history.last_stroke_index};
@@ -546,7 +506,7 @@ void application::update_refactor([[maybe_unused]]float dt)
 
             if (im->mouse_moving()) {
                 if (im->mouse_down(mouse_button::LEFT)) {
-                    if (info.new_stroke_start) {
+                    if (info.should_start_new_stroke) {
                         ++last_stroke_index;
                         if (stroke_history.last_stroke_index >= strokes.size()) strokes.emplace_back();
                         for (std::size_t i{last_stroke_index}; i<=last_valid_redo_index; ++i) {
@@ -563,7 +523,7 @@ void application::update_refactor([[maybe_unused]]float dt)
                     strokes[last_stroke_index].type = current_brush_type;
                     info.drawing = true;
                     info.drawing_finished = false;
-                    info.new_stroke_start = false;
+                    info.should_start_new_stroke = false;
                 }
                 if (im->mouse_released(mouse_button::LEFT)) {
                     strokes[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
@@ -572,12 +532,12 @@ void application::update_refactor([[maybe_unused]]float dt)
                     strokes[last_stroke_index].type = current_brush_type;
                     info.drawing = true;
                     info.drawing_finished = true;
-                    info.new_stroke_start = true;
+                    info.should_start_new_stroke = true;
                 }
             }
             else {
                 if (im->mouse_released(mouse_button::LEFT)) {
-                    if (info.new_stroke_start) {
+                    if (info.should_start_new_stroke) {
                         ++last_stroke_index;
                         if (last_stroke_index >= strokes.size()) strokes.emplace_back();
                         for (std::size_t i{last_stroke_index}; i<=last_valid_redo_index; ++i) {
@@ -593,7 +553,7 @@ void application::update_refactor([[maybe_unused]]float dt)
                     }
                     info.drawing = true;
                     info.drawing_finished = true;
-                    info.new_stroke_start = true;
+                    info.should_start_new_stroke = true;
                 }
             }    
         } 
@@ -644,13 +604,13 @@ void application::update_refactor([[maybe_unused]]float dt)
     }
 }
 
-void application::draw_refactor()
+void application::draw()
 {
-    ImGui::Text("%zu", stroke_history.strokes[stroke_history.last_stroke_index].brush_points.size());
-    ImGui::Text("last stroke idx %zu", stroke_history.last_stroke_index);
-    ImGui::Text("last valid redo idx %zu", stroke_history.last_valid_redo_index);
-    ImGui::Text("size %zu", stroke_history.strokes.size());
-    ImGui::Text("canvas dims %d, %d", canvas.width, canvas.height);
+    //ImGui::Text("%zu", stroke_history.strokes[stroke_history.last_stroke_index].brush_points.size());
+    //ImGui::Text("last stroke idx %zu", stroke_history.last_stroke_index);
+    //ImGui::Text("last valid redo idx %zu", stroke_history.last_valid_redo_index);
+    //ImGui::Text("size %zu", stroke_history.strokes.size());
+    //ImGui::Text("canvas dims %d, %d", canvas.width, canvas.height);
 
     // Clear resized buffer and copy all contents from old to new.
     // Then swap struct info as well.
@@ -811,7 +771,6 @@ void application::draw_refactor()
             }
         }
         stroke_history.should_undo = false;
-        return;
     }
     else if (stroke_history.should_redo) {
         if (stroke_history.last_stroke_index+1 <= stroke_history.last_valid_redo_index) {
@@ -839,7 +798,6 @@ void application::draw_refactor()
             }
         }
         stroke_history.should_redo = false;
-        return;
     }
 
     if (info.drawing) {
@@ -872,7 +830,7 @@ void application::draw_refactor()
         if (info.drawing_finished) {
             info.drawing_finished = false;
             info.drawing = false;
-            info.new_stroke_start = true;
+            info.should_start_new_stroke = true;
         }
     }
 
@@ -915,126 +873,128 @@ void application::draw_refactor()
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
             }
 
-            const auto offset_x {info.new_width -canvas.width };
-            const auto offset_y {info.new_height-canvas.height};
-            const auto& cw {canvas.width};
-            const auto& ch {canvas.height};
-            std::vector<graphics::line> resize_lines;
-            switch (info.resize_button_index) {
-                case 0: {
-                    const auto p1 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y-(ch*0.5f+offset_y)}};
-                    const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
-                    const auto p3 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
+            if (info.resizing) {
+                const auto offset_x {info.new_width -canvas.width };
+                const auto offset_y {info.new_height-canvas.height};
+                const auto& cw {canvas.width};
+                const auto& ch {canvas.height};
+                std::vector<graphics::line> resize_lines;
+                switch (info.resize_button_index) {
+                    case 0: {
+                        const auto p1 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y-(ch*0.5f+offset_y)}};
+                        const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
+                        const auto p3 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
 
-                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
-                    resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
-                        resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
-                    }
-                    if (offset_y > 0) {
-                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
-                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
-                    }
-                } break;
-                case 1: {
-                    const auto p1 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
-                    const auto p2 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
-                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p3 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
-                        const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
                         resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
-                        resize_lines.emplace_back(graphics::line{p2, p4, 1.0f});
-                    }
-                } break;
-                case 2: {
-                    const auto p1 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y+(ch*0.5f+offset_y)}};
-                    const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
-                    const auto p3 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
+                        if (offset_x > 0) {
+                            const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
+                        }
+                        if (offset_y > 0) {
+                            const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                        }
+                    } break;
+                    case 1: {
+                        const auto p1 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
+                        const auto p2 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                        if (offset_x > 0) {
+                            const auto p3 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
+                            const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
+                            resize_lines.emplace_back(graphics::line{p2, p4, 1.0f});
+                        }
+                    } break;
+                    case 2: {
+                        const auto p1 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y+(ch*0.5f+offset_y)}};
+                        const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
+                        const auto p3 {math::vec2f{canvas.pos.x-(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
 
-                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
-                    resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
-                        resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
-                    }
-                    if (offset_y > 0) {
-                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
-                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
-                    }
-                } break;
-                case 3: {
-                    const auto p1 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
-                    const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
-                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
-                    if (offset_y > 0) {
-                        const auto p3 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
-                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
-                        resize_lines.emplace_back(graphics::line{p3, p1, 1.0f});
-                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
-                    }
-                } break;
-                case 4: {
-                    const auto p1 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y+(ch*0.5f+offset_y)}};
-                    const auto p2 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
-                    const auto p3 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
-
-                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
-                    resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
-                        resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
-                    }
-                    if (offset_y > 0) {
-                        const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
-                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
-                    }
-                } break;
-                case 5: {
-                    const auto p1 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
-                    const auto p2 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
-                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p3 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
-                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
                         resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
-                        resize_lines.emplace_back(graphics::line{p2, p4, 1.0f});
-                    }
-                } break;
-                case 6: {
-                    const auto p1 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y-(ch*0.5f+offset_y)}};
-                    const auto p2 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
-                    const auto p3 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
+                        if (offset_x > 0) {
+                            const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
+                        }
+                        if (offset_y > 0) {
+                            const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                        }
+                    } break;
+                    case 3: {
+                        const auto p1 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
+                        const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
+                        resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                        if (offset_y > 0) {
+                            const auto p3 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
+                            const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p3, p1, 1.0f});
+                            resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                        }
+                    } break;
+                    case 4: {
+                        const auto p1 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y+(ch*0.5f+offset_y)}};
+                        const auto p2 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+(ch*0.5f+offset_y)}};
+                        const auto p3 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
 
-                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
-                    resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
-                    if (offset_x > 0) {
-                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
-                        resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
-                    }
-                    if (offset_y > 0) {
-                        const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
-                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
-                    }
-                } break;
-                case 7: {
-                    const auto p1 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
-                    const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
-                    resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
-                    if (offset_y > 0) {
-                        const auto p3 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
-                        const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
-                        resize_lines.emplace_back(graphics::line{p3, p1, 1.0f});
-                        resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
-                    }
-                } break;
-                default:
-                    break;
+                        resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                        resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
+                        if (offset_x > 0) {
+                            const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
+                        }
+                        if (offset_y > 0) {
+                            const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y+ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                        }
+                    } break;
+                    case 5: {
+                        const auto p1 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
+                        const auto p2 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y-ch*0.5f}};
+                        resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                        if (offset_x > 0) {
+                            const auto p3 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
+                            const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
+                            resize_lines.emplace_back(graphics::line{p2, p4, 1.0f});
+                        }
+                    } break;
+                    case 6: {
+                        const auto p1 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y-(ch*0.5f+offset_y)}};
+                        const auto p2 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
+                        const auto p3 {math::vec2f{canvas.pos.x+(cw*0.5f+offset_x), canvas.pos.y+ch*0.5f}};
+
+                        resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                        resize_lines.emplace_back(graphics::line{p1, p3, 1.0f});
+                        if (offset_x > 0) {
+                            const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y+ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p4, p3, 1.0f});
+                        }
+                        if (offset_y > 0) {
+                            const auto p4 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                        }
+                    } break;
+                    case 7: {
+                        const auto p1 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
+                        const auto p2 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-(ch*0.5f+offset_y)}};
+                        resize_lines.emplace_back(graphics::line{p1, p2, 1.0f});
+                        if (offset_y > 0) {
+                            const auto p3 {math::vec2f{canvas.pos.x-cw*0.5f, canvas.pos.y-ch*0.5f}};
+                            const auto p4 {math::vec2f{canvas.pos.x+cw*0.5f, canvas.pos.y-ch*0.5f}};
+                            resize_lines.emplace_back(graphics::line{p3, p1, 1.0f});
+                            resize_lines.emplace_back(graphics::line{p4, p2, 1.0f});
+                        }
+                    } break;
+                    default:
+                        break;
+                }
+
+                colored_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view);
+                graphics::draw_lines(resize_lines, colored_quad_shader);
             }
-
-            colored_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view);
-            graphics::draw_lines(resize_lines, colored_quad_shader);
         }
     }
 }

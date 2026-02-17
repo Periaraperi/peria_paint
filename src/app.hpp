@@ -61,7 +61,6 @@ struct imgui {
     bool is_imgui_hovered() noexcept;
 
     bool show_tools {true};
-    bool update_canvas {};
     bool pen_selected {true};
     bool eraser_selected {};
     bool bucket_selected {};
@@ -87,8 +86,8 @@ private:
     application_settings app_settings_;
     sdl::sdl_initializer sdl_initializer_;
     imgui::imgui imgui_;
-    void update_refactor(float dt);
-    void draw_refactor();
+    void update(float dt);
+    void draw();
 
     // gl entities.
     gl::vertex_array circle_vao;
@@ -155,7 +154,7 @@ private:
         // brush stroke rendering information
         bool drawing          {false};
         bool drawing_finished {false};
-        bool new_stroke_start {true};
+        bool should_start_new_stroke {true};
         float current_brush_size {5.0f};
         float current_aa {1.0f};
 
