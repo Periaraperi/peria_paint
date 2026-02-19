@@ -1,5 +1,6 @@
 #version 460 core
 
+in vec2 frag_pos;
 out vec4 final_color;
 
 uniform float u_radius2;
@@ -13,7 +14,7 @@ uniform float u_aa;
 
 void main()
 {
-    vec2 p = gl_FragCoord.xy;
+    vec2 p = frag_pos;
     p -= u_center;
     float plen = length(p);
     if (u_is_ring) {
