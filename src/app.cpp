@@ -405,6 +405,7 @@ void application::run()
 
         update(dt);
         draw();
+        //test();
 
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::Button("tools")) {
@@ -416,7 +417,10 @@ void application::run()
             ImGui::Text("Height %d", canvas.height);
             switch (current_mode) {
                 case app_mode::DRAW:
-                    ImGui::Text("Mode - DRAW");
+                    if (current_brush_type == brush_type::PEN)
+                        ImGui::Text("Mode - DRAW PEN");
+                    if (current_brush_type == brush_type::BUCKET)
+                        ImGui::Text("Mode - DRAW BUCKET");
                     break;
                 case app_mode::ERASER:
                     ImGui::Text("Mode - ERASER");
@@ -485,6 +489,10 @@ void application::update([[maybe_unused]]float dt)
     if (im->key_pressed(SDL_SCANCODE_E)) {
         current_mode = app_mode::ERASER;
         current_brush_type = brush_type::ERASER;
+    }
+    if (im->key_pressed(SDL_SCANCODE_G)) {
+        current_mode = app_mode::DRAW;
+        current_brush_type = brush_type::BUCKET;
     }
     if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_Z)) {
         stroke_history.should_undo = true;
@@ -773,7 +781,8 @@ void application::draw()
                        math::scale(2.0f*stroke.brush_size, 2.0f*stroke.brush_size, 1.0f)};
 
         circle_shader.set_int("u_is_ring", 0);
-        circle_shader.set_mat4("u_mvp", canvas.projection*m);
+        circle_shader.set_mat4("u_vp", canvas.projection);
+        circle_shader.set_mat4("u_model", m);
         circle_shader.set_float("u_radius", stroke.brush_size);
         circle_shader.set_vec2("u_center", p);
         circle_shader.set_vec3("u_color", stroke.color);
@@ -797,7 +806,8 @@ void application::draw()
             math::mat4f m {math::translate(x, y, 0.0f)*
                            math::scale(2.0f*stroke.brush_size, 2.0f*stroke.brush_size, 1.0f)};
 
-            circle_shader.set_mat4("u_mvp", canvas.projection*m);
+            circle_shader.set_mat4("u_vp", canvas.projection);
+            circle_shader.set_mat4("u_model", m);
             circle_shader.set_float("u_radius", stroke.brush_size);
             circle_shader.set_vec2("u_center", {x, y});
             circle_shader.set_vec3("u_color", stroke.color);
@@ -948,9 +958,10 @@ void application::draw()
 
                 circle_shader.use_shader();
                 circle_shader.set_int("u_is_ring", 0);
-                circle_shader.set_mat4("u_mvp", window_projection*cam2d.view*m);
-                circle_shader.set_float("u_radius", info.resize_button_radius*cam2d.zoom_scale);
-                circle_shader.set_vec2("u_center", (cam2d.view*math::vec4f{pos, 0.0f, 1.0f}).xy());
+                circle_shader.set_mat4("u_vp", window_projection*cam2d.view);
+                circle_shader.set_mat4("u_model", m);
+                circle_shader.set_float("u_radius", info.resize_button_radius);
+                circle_shader.set_vec2("u_center", pos);
                 circle_shader.set_vec3("u_color", math::vec3f{0.0f, 0.0f, 0.0f});
                 circle_shader.set_float("u_aa", 0.0f);
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
@@ -1079,6 +1090,60 @@ void application::draw()
                 graphics::draw_lines(resize_lines, colored_quad_shader);
             }
         }
+    }
+}
+
+std::vector<std::vector<math::vec2f>> strokes;
+void application::test()
+{
+    const auto im {input_manager::instance()};
+    cam2d.update(window_projection);
+
+    const math::vec2f mouse_screen {im->get_mouse_gl().x, im->get_mouse_gl().y};
+    const math::vec2f mouse_world {cam2d.screen_to_world(mouse_screen, window_projection)};
+    if (strokes.empty()) strokes.emplace_back();
+
+
+    if (im->mouse_moving()) {
+        if (im->mouse_down(mouse_button::LEFT)) {
+            strokes.back().emplace_back(mouse_world);
+        }
+        if (im->mouse_released(mouse_button::LEFT)) {
+            strokes.back().emplace_back(mouse_world);
+            strokes.emplace_back();
+        }
+    }
+
+    {
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
+        graphics::bind_frame_buffer_default();
+        graphics::clear_buffer_all(0, graphics::WHITE, 1.0f, 0);
+
+        circle_batcher_shader.set_mat4("u_mvp", window_projection*cam2d.view);
+
+        std::vector<graphics::circle> circles;
+        for (const auto& points:strokes) {
+            for (float t{}; t<static_cast<float>(points.size())-3.0f; t+=0.01f) {
+                circles.emplace_back(graphics::circle{get_point_on_path(points, t), {1.0f, 0.2f, 0.5f}, 30});
+            }
+        }
+        graphics::draw_circles(circles, circle_batcher_shader);
+
+        //graphics::bind_vertex_array(circle_vao);
+        //math::mat4f m {math::translate(mouse_world.x, mouse_world.y, 0.0f)*
+        //               math::scale(30.0f, 30.0f, 1.0f)};
+
+        //circle_shader.set_int("u_is_ring", 0);
+        //circle_shader.set_mat4("u_vp", window_projection*cam2d.view);
+        //circle_shader.set_mat4("u_model", m);
+        //circle_shader.set_float("u_radius", 15.0f);
+        //circle_shader.set_vec2("u_center", mouse_world);
+        //circle_shader.set_vec3("u_color", {1.0f, 0.5f, 1.0f});
+        //circle_shader.set_float("u_aa", 1);
+        //circle_shader.use_shader();
+        //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
     }
 }
 

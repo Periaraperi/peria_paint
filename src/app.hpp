@@ -88,6 +88,7 @@ private:
     imgui::imgui imgui_;
     void update(float dt);
     void draw();
+    void test();
 
     // gl entities.
     gl::vertex_array circle_vao;
