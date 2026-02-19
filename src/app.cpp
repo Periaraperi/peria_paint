@@ -504,7 +504,7 @@ void application::update([[maybe_unused]]float dt)
         case app_mode::DRAW:
         case app_mode::ERASER:
         {
-            if (current_brush_type == brush_type::BUCKET && inside_canvas && im->mouse_pressed(mouse_button::LEFT)) {
+            if (current_brush_type == brush_type::BUCKET && inside_canvas && im->mouse_pressed(mouse_button::LEFT) && !imgui_.is_imgui_hovered()) {
                 glPixelStorei(GL_UNPACK_ROW_LENGTH, canvas.width);
                 std::vector<float> pixels(static_cast<std::size_t>(canvas.width*canvas.height*4), 0);
                 glGetTextureImage(canvas.texture.id, 0, GL_RGBA, GL_FLOAT, static_cast<int>(pixels.size()*sizeof(float)), &pixels[0]);
@@ -698,7 +698,7 @@ void application::draw()
         graphics::bind_frame_buffer(temp_canvas.buffer);
         graphics::set_viewport(0, 0, temp_canvas.width, temp_canvas.height);
         const auto& [r, g, b] {info.bg_color};
-        graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 0.0f});
+        graphics::clear_buffer_color(temp_canvas.buffer.id, graphics::color{r, g, b, 0.0f});
 
         const auto w {std::min(temp_canvas.width,  canvas.width)};
         const auto h {std::min(temp_canvas.height, canvas.height)};
