@@ -7,6 +7,7 @@
 #include "graphics/gl_entities.hpp"
 #include "graphics/shader.hpp"
 
+#include "math/camera2d.hpp"
 #include "math/vec.hpp"
 
 namespace peria {
@@ -16,17 +17,6 @@ struct application_settings {
     int window_width  {800};
     int window_height {600};
     bool resizable {false};
-};
-
-struct brush_point {
-    vec2 p;
-    float r {};
-};
-
-struct line {
-    vec2 p1 {}, p2 {};
-    vec3 color {};
-    float thickness {};
 };
 
 namespace sdl {
@@ -71,7 +61,6 @@ struct imgui {
     bool is_imgui_hovered() noexcept;
 
     bool show_tools {true};
-    bool update_canvas {};
     bool pen_selected {true};
     bool eraser_selected {};
     bool bucket_selected {};
@@ -97,98 +86,100 @@ private:
     application_settings app_settings_;
     sdl::sdl_initializer sdl_initializer_;
     imgui::imgui imgui_;
-
     void update(float dt);
     void draw();
+    void test();
 
     // gl entities.
     gl::vertex_array circle_vao;
     gl::vertex_array canvas_vao;
-    gl::vertex_array line_vao;
-    gl::vertex_array line_resize_vao;
     gl::vertex_array resize_button_quad_vao;
 
     gl::named_buffer circle_vbo;
     gl::named_buffer canvas_vbo;
-    gl::named_buffer line_vbo;
-    gl::named_buffer line_resize_vbo;
     gl::named_buffer resize_button_quad_vbo;
 
     gl::named_buffer quad_ibo;
-    gl::named_buffer line_ibo;
-    gl::named_buffer line_resize_ibo;
 
     gl::shader circle_shader;
+    gl::shader circle_batcher_shader;
+    gl::shader colored_quad_shader;
     gl::shader textured_quad_shader;
-    gl::shader line_shader;
+
+    gl::sampler sampler_linear;
+    gl::sampler sampler_nearest;
+
+    gl::texture2d canvas_bg;
 
     math::mat4f window_projection;
+    math::camera2d cam2d;
 
-    struct canvas {
+    enum class app_mode {
+        DRAW = 0,
+        ERASER,
+        RESIZE
+    } current_mode {app_mode::DRAW};
+
+    enum class brush_type {
+        PEN = 0,
+        ERASER,
+        BUCKET
+    } current_brush_type {brush_type::PEN};
+
+    struct draw_region {
         gl::texture2d texture;
-        gl::sampler sampler;
         gl::frame_buffer buffer;
 
         int width  {};
         int height {};
-        vec2 pos {};
-        math::mat4f projection;
-        graphics::color bg_color;
+        math::vec2f pos {};
+        math::mat4f projection {};
+    };
 
-        std::string filename {};
-    } canvas, transparent_canvas;
+    draw_region canvas {};
+    draw_region temp_canvas {};
 
-    struct temp_canvas {
-        gl::texture2d texture;
-        gl::frame_buffer buffer;
-        int width  {};
-        int height {};
-    } temp_canvas;
-
-    struct pen_tool {
-        std::vector<brush_point> brush_points; // for brush stroke
-        std::array<float, 3> brush_color {};
+    struct stroke {
+        std::vector<math::vec2f> brush_points; // stroke control points
+        float aa {1.0f};
         float brush_size {10.0f};
-    } pen_;
+        math::vec3f color {};
+        brush_type type;
+    };
 
-    struct eraser {
-        float r {10.0f};
-    } eraser_;
-
+    struct history {
+        std::vector<stroke> strokes; // indexing starts from 1
+        std::size_t last_stroke_index {};
+        std::size_t last_valid_redo_index {};
+        bool should_undo {};
+        bool should_redo {};
+    } stroke_history;
+    
     struct info {
-        vec2 world_offset {};
-        bool mouse_moved {};
-        bool prev_mouse_moved {};
-        float pan_speed {50.0f};
-        float resize_speed {100.0f};
-        bool should_draw {false};
-        bool should_empty {false};
-        bool resized {true};
+        std::string current_filename {""};
+        std::array<float, 3> bg_color {1.0f, 1.0f, 1.0f};
+        bool use_nearest {true};
+
+        // brush stroke rendering information
+        bool drawing          {false};
+        bool drawing_finished {false};
+        bool should_start_new_stroke {true};
+        float current_brush_size {5.0f};
+        float current_aa {1.0f};
+        std::array<float, 3> current_color {};
+
+        // canvas resizing information
+        bool resized {false};
         bool resizing {false};
         int new_width {};
         int new_height {};
-        bool in_resize_mode {false};
         int resize_button_index {-1};
-        bool in_selection_mode {false};
+        float resize_button_radius {7.0f};
     } info;
 
-    struct rect_selection {
-        bool is_selecting {false};
-        bool done {false};
-        vec2 p1 {};
-        vec2 p2 {};
-    } selection_info;
-
-    std::array<veci2, 8> resize_dirs {{
+    std::array<math::vec2i, 8> canvas_resize_dirs {{
         {-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}
     }};
-
-    static constexpr int MAX_PER_BATCH {4096}; // count
-
-    struct line_batcher {
-        std::vector<gl::vertex<gl::pos2, gl::color4>> lines_data;
-        using vertex_t = typename gl::vertex<gl::pos2, gl::color4>;
-    } line_batcher;
 };
 
 }

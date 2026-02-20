@@ -2,4 +2,7 @@ build/
 compile_commands.json
 todo.txt
 test/
+saved/
 .cache/
+src/old
+src/tmp.cpp

@@ -107,6 +107,7 @@ using pos3          = attr<float, 3>;
 using pos4          = attr<float, 4>;
 using normal        = attr<float, 3>;
 using texture_coord = attr<float, 2>;
+using color3        = attr<float, 3>;
 using color4        = attr<float, 4>;
 
 }

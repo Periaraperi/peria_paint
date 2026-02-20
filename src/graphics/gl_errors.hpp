@@ -47,6 +47,7 @@ inline APIENTRY void debug_callback(GLenum source, GLenum type, unsigned int id,
     }
     std::println();
     std::println("--------------------------------------------------------------------");
+    std::exit(1);
 }
 
 

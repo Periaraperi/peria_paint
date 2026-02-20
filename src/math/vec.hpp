@@ -365,12 +365,12 @@ struct vec4 {
     T w {};
 };
 
+using vec2f = peria::math::vec2<float>;
+using vec3f = peria::math::vec3<float>;
+using vec4f = peria::math::vec4<float>;
+
+using vec2i = peria::math::vec2<int>;
+using vec3i = peria::math::vec3<int>;
+using vec4i = peria::math::vec4<int>;
+
 }
-
-using vec2 = peria::math::vec2<float>;
-using vec3 = peria::math::vec3<float>;
-using vec4 = peria::math::vec4<float>;
-
-using veci2 = peria::math::vec2<int>;
-using veci3 = peria::math::vec3<int>;
-using veci4 = peria::math::vec4<int>;

@@ -46,10 +46,27 @@ void input_manager::update_prev_state()
 {
     std::copy(keyboard_state_, keyboard_state_+keys_length_, prev_keyboard_state_);
     prev_mouse_state_ = mouse_state_;
+    prev_mouse_moved_ = mouse_moved_;
+    mouse_moved_ = false;
 }
 
 void input_manager::update_mouse() noexcept
 { mouse_state_ = SDL_GetMouseState(&mouse_x_, &mouse_y_); }
+
+void input_manager::set_mouse_moved() noexcept
+{ mouse_moved_ = true; }
+
+void input_manager::set_mouse_wheel_motion(float amount) noexcept
+{ mouse_wheel_scroll_amount_ = amount; }
+
+bool input_manager::mouse_moving() const noexcept
+{ return mouse_moved_; }
+
+bool input_manager::mouse_moved_previous_frame() const noexcept
+{ return prev_mouse_moved_; }
+
+float input_manager::get_mouse_wheel_scroll_amount() const noexcept
+{ return mouse_wheel_scroll_amount_; }
 
 mouse input_manager::get_mouse() const noexcept
 { return {mouse_x_, mouse_y_}; }
