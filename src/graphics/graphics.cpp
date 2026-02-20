@@ -382,7 +382,7 @@ std::string write_to_png(const gl::texture2d& texture, int width, int height, co
         pixels[i*4 + 3] = static_cast<u8>(std::clamp(data[i*4 + 3], 0.0f, 1.0f)*255.0f + 0.5f);
     }
 
-    std::string dir_name {"./test/"};
+    std::string dir_name {"./saved/"};
     std::string file_name {filename};
     if (file_name.empty()) {
         int k {};
@@ -394,7 +394,7 @@ std::string write_to_png(const gl::texture2d& texture, int width, int height, co
             else break;
         }
     }
-    const std::string path {"./test/"+file_name+".png"};
+    const std::string path {"./saved/"+file_name+".png"};
     stbi_write_png(path.c_str(), width, height, 4, pixels.data(), width*4*sizeof(u8));
     return file_name;
 }

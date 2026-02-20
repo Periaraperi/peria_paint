@@ -65,7 +65,7 @@ peria::math::vec2f get_point_on_path(const std::vector<peria::math::vec2f>& poin
 std::vector<std::string> get_all_png_images()
 {
     std::vector<std::string> res;
-    std::filesystem::path p{"./test/"};
+    std::filesystem::path p{"./saved/"};
     std::filesystem::directory_iterator it{p};
     for (const auto& entry:it) {
         if (entry.is_regular_file()) {
@@ -198,21 +198,19 @@ application::application(application_settings&& settings)
      circle_batcher_shader{"./assets/shaders/circle_batcher.vert", "./assets/shaders/circle_batcher.frag"},
      colored_quad_shader{"./assets/shaders/quad_colored.vert", "./assets/shaders/quad_colored.frag"},
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
+     sampler_linear{graphics::create_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, 
+     sampler_nearest{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, 
      canvas_bg{gl::texture2d{graphics::create_texture2d_from_color(graphics::WHITE)}},
      canvas{gl::texture2d{graphics::create_texture2d(static_cast<int>(app_settings_.window_width*0.75f), 
                                                      static_cast<int>(app_settings_.window_height*0.75f),
                                                      GL_RGBA32F)},
-            gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, 
             {}, 
             static_cast<int>(app_settings_.window_width*0.75f),
             static_cast<int>(app_settings_.window_height*0.75f),
             {},
             {}
      },
-     temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}},
-                  gl::sampler{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)},
-                  {}
-     }
+     temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}}, {}}
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
@@ -336,9 +334,12 @@ application::application(application_settings&& settings)
     graphics::bind_frame_buffer(canvas.buffer);
     graphics::set_viewport(0, 0, canvas.width, canvas.height);
     const auto& [r, g, b] {info.bg_color};
-    graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 0.0f});
+    graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 1.0f});
 
     stroke_history.strokes.emplace_back();
+    if (!std::filesystem::exists(std::filesystem::path{"saved"})) {
+        std::filesystem::create_directory(std::filesystem::path{"saved"});
+    }
 }
 
 application::~application()
@@ -408,6 +409,33 @@ void application::run()
         //test();
 
         if (ImGui::BeginMainMenuBar()) {
+            if (ImGui::Button("save")) {
+                info.current_filename = graphics::write_to_png(canvas.texture, canvas.width, canvas.height, info.current_filename.c_str());
+            }
+
+            if (ImGui::BeginMenu("open")) {
+                const auto files {get_all_png_images()};
+                for (const auto& f:files) {
+                    if (ImGui::MenuItem(f.c_str())) {
+                        auto image {graphics::load_png(("./saved/"+f).c_str())};
+
+                        canvas.texture = std::move(image.texture);
+                        canvas.width = image.width;
+                        canvas.height = image.height;
+                        canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
+
+                        glNamedFramebufferTexture(canvas.buffer.id, GL_COLOR_ATTACHMENT0, canvas.texture.id, 0);
+                        auto status {glCheckNamedFramebufferStatus(canvas.buffer.id, GL_FRAMEBUFFER)};
+                        if (status != GL_FRAMEBUFFER_COMPLETE) {
+                            std::println("FrameBuffer with id {} is incomplete\n {}", canvas.buffer.id, status);
+                        }
+
+                        info.current_filename = f.substr(0, f.size()-4);
+                    }
+                }
+                ImGui::EndMenu();
+            }
+
             if (ImGui::Button("tools")) {
                 if (imgui_.show_tools) imgui_.show_tools = false;
                 else                   imgui_.show_tools = true;
@@ -415,6 +443,12 @@ void application::run()
 
             ImGui::Text("Width %d", canvas.width);
             ImGui::Text("Height %d", canvas.height);
+            if (info.use_nearest) {
+                ImGui::Text("Filtering - Nearest");
+            }
+            else {
+                ImGui::Text("Filtering - Linear");
+            }
             switch (current_mode) {
                 case app_mode::DRAW:
                     if (current_brush_type == brush_type::PEN)
@@ -454,6 +488,9 @@ void application::run()
                 if (ImGui::Button("bucket")) {
                     current_mode = app_mode::DRAW;
                     current_brush_type = brush_type::BUCKET;
+                }
+                if (ImGui::Button("toggle filtering")) {
+                    info.use_nearest = !info.use_nearest;
                 }
             }
             ImGui::End();
@@ -499,6 +536,9 @@ void application::update([[maybe_unused]]float dt)
     }
     if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_Y)) {
         stroke_history.should_redo = true;
+    }
+    if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_S)) {
+        info.current_filename = graphics::write_to_png(canvas.texture, canvas.width, canvas.height, info.current_filename.c_str());
     }
 
     cam2d.update(window_projection);
@@ -706,7 +746,7 @@ void application::draw()
         graphics::bind_frame_buffer(temp_canvas.buffer);
         graphics::set_viewport(0, 0, temp_canvas.width, temp_canvas.height);
         const auto& [r, g, b] {info.bg_color};
-        graphics::clear_buffer_color(temp_canvas.buffer.id, graphics::color{r, g, b, 0.0f});
+        graphics::clear_buffer_color(temp_canvas.buffer.id, graphics::color{r, g, b, 1.0f});
 
         const auto w {std::min(temp_canvas.width,  canvas.width)};
         const auto h {std::min(temp_canvas.height, canvas.height)};
@@ -834,7 +874,7 @@ void application::draw()
         graphics::bind_frame_buffer(canvas.buffer);
         graphics::set_viewport(0, 0, canvas.width, canvas.height);
         const auto& [r, g, b] {info.bg_color};
-        graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 0.0f});
+        graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 1.0f});
 
         if (stroke_history.last_stroke_index > 0) {
             --stroke_history.last_stroke_index;
@@ -939,12 +979,13 @@ void application::draw()
         textured_quad_shader.use_shader();
         textured_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view*canvas_world_model);
 
-        graphics::bind_texture_and_sampler(canvas_bg, canvas.sampler, 0);
-        const auto& [r, g, b] {info.bg_color};
-        textured_quad_shader.set_vec3("u_color_multiplier", {r, g, b});
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        //graphics::bind_texture_and_sampler(canvas_bg, canvas.sampler, 0);
+        //const auto& [r, g, b] {info.bg_color};
+        //textured_quad_shader.set_vec3("u_color_multiplier", {r, g, b});
+        //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
-        graphics::bind_texture_and_sampler(canvas.texture, canvas.sampler, 0);
+        if (info.use_nearest) graphics::bind_texture_and_sampler(canvas.texture, sampler_nearest, 0);
+        else graphics::bind_texture_and_sampler(canvas.texture, sampler_linear, 0);
         textured_quad_shader.set_vec3("u_color_multiplier", {1.0f, 1.0f, 1.0f});
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 

@@ -106,6 +106,9 @@ private:
     gl::shader colored_quad_shader;
     gl::shader textured_quad_shader;
 
+    gl::sampler sampler_linear;
+    gl::sampler sampler_nearest;
+
     gl::texture2d canvas_bg;
 
     math::mat4f window_projection;
@@ -125,7 +128,6 @@ private:
 
     struct draw_region {
         gl::texture2d texture;
-        gl::sampler sampler;
         gl::frame_buffer buffer;
 
         int width  {};
@@ -154,7 +156,10 @@ private:
     } stroke_history;
     
     struct info {
+        std::string current_filename {""};
         std::array<float, 3> bg_color {1.0f, 1.0f, 1.0f};
+        bool use_nearest {true};
+
         // brush stroke rendering information
         bool drawing          {false};
         bool drawing_finished {false};
