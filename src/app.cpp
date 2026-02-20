@@ -548,6 +548,19 @@ void application::update([[maybe_unused]]float dt)
     const math::vec2f canvas_world_lower_left {canvas.pos-math::vec2{canvas.width*0.5f, canvas.height*0.5f}};
     const bool inside_canvas {point_inside_rect(mouse_world, canvas_world_lower_left, {static_cast<float>(canvas.width), static_cast<float>(canvas.height)})};
 
+    // eye drop tool here
+    if (inside_canvas && im->key_down(SDL_SCANCODE_LCTRL) && im->mouse_pressed(mouse_button::LEFT)) {
+
+        std::vector<float> pixels(static_cast<std::size_t>(canvas.width*canvas.height*4), 0);
+        glGetTextureImage(canvas.texture.id, 0, GL_RGBA, GL_FLOAT, static_cast<int>(pixels.size()*sizeof(float)), &pixels[0]);
+        const math::vec2i mp {static_cast<int>(mouse_world.x-canvas_world_lower_left.x), static_cast<int>(mouse_world.y-canvas_world_lower_left.y)};
+
+        info.current_color[0] = pixels[static_cast<std::size_t>(mp.y*canvas.width+mp.x)*4 + 0];
+        info.current_color[1] = pixels[static_cast<std::size_t>(mp.y*canvas.width+mp.x)*4 + 1];
+        info.current_color[2] = pixels[static_cast<std::size_t>(mp.y*canvas.width+mp.x)*4 + 2];
+        return;
+    }
+
     switch (current_mode) {
         case app_mode::DRAW:
         case app_mode::ERASER:
@@ -618,7 +631,6 @@ void application::update([[maybe_unused]]float dt)
                 glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); // don't forget this
                 return;
             }
-            else if (current_brush_type == brush_type::BUCKET) return;
 
             if ((info.should_start_new_stroke && !inside_canvas) ||
                 (info.should_start_new_stroke && (imgui_.is_imgui_captured() || imgui_.is_imgui_hovered()))) break;
@@ -626,6 +638,9 @@ void application::update([[maybe_unused]]float dt)
             auto& strokes {stroke_history.strokes};
             auto& last_stroke_index {stroke_history.last_stroke_index};
             auto& last_valid_redo_index {stroke_history.last_valid_redo_index};
+
+            if (im->key_down(SDL_SCANCODE_LCTRL) || 
+                current_brush_type == brush_type::BUCKET) return;
 
             if (im->mouse_moving()) {
                 if (im->mouse_down(mouse_button::LEFT)) {
