@@ -141,8 +141,8 @@ private:
 
     struct stroke {
         std::vector<math::vec2f> brush_points; // stroke control points
-        float aa {1.0f};
-        float brush_size {10.0f};
+        float aa {};
+        float brush_size {};
         math::vec3f color {};
         brush_type type;
     };
@@ -164,7 +164,7 @@ private:
         bool drawing          {false};
         bool drawing_finished {false};
         bool should_start_new_stroke {true};
-        float current_brush_size {5.0f};
+        float current_brush_size {10.0f};
         float current_aa {1.0f};
         std::array<float, 3> current_color {};
 

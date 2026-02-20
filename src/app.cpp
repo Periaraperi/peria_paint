@@ -472,7 +472,10 @@ void application::run()
         if (imgui_.show_tools) {
             if (ImGui::Begin("tools")) {
                 if (ImGui::ColorPicker3("brush_color", info.current_color.data())) {}
-                if (ImGui::SliderFloat("brush_size", &info.current_brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {}
+                if (ImGui::SliderFloat("brush_size", &info.current_brush_size, 1.0f, static_cast<float>(std::min(canvas.width, canvas.height))/4.0f)) {
+                    info.current_aa = info.current_brush_size*0.1f;
+                }
+                if (ImGui::SliderFloat("brush_smoothness", &info.current_aa, 0.0f, info.current_brush_size)) {}
                 if (ImGui::Button("center")) {
                     cam2d.pos = {};
                     cam2d.zoom_scale = 1.0f;
