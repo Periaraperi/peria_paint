@@ -114,11 +114,17 @@ void init_circle_batcher(u32 max_per_batch = 8192);
 // call this only once during application initialization
 void init_quad_batcher(u32 max_per_batch = 8192);
 
+// initializes batcher structure to render lines in a batched manner.
+// call this only once during application initialization
+void init_line_batcher(u32 max_per_batch = 8192);
+
 // batched drawing routines
 
 void draw_circles(const std::vector<circle>& circles, const gl::shader& shader);
 
 void draw_lines(const std::vector<line>& lines, const gl::shader& shader);
+
+void draw_lines_v2(const std::vector<line>& lines, const gl::shader& shader, float aa);
 
 // clears frame buffer's color, depth, and stencil values.
 void clear_buffer_all(u32 fbo,

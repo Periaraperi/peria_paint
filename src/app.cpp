@@ -198,6 +198,7 @@ application::application(application_settings&& settings)
      circle_batcher_shader{"./assets/shaders/circle_batcher.vert", "./assets/shaders/circle_batcher.frag"},
      colored_quad_shader{"./assets/shaders/quad_colored.vert", "./assets/shaders/quad_colored.frag"},
      textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
+     line_shader{"./assets/shaders/line.vert", "./assets/shaders/line.frag"},
      sampler_linear{graphics::create_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, 
      sampler_nearest{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, 
      canvas_bg{gl::texture2d{graphics::create_texture2d_from_color(graphics::WHITE)}},
@@ -219,6 +220,7 @@ application::application(application_settings&& settings)
     {
         graphics::init_circle_batcher();
         graphics::init_quad_batcher();
+        graphics::init_line_batcher();
     }
 
     input_manager::initialize();
@@ -1182,23 +1184,23 @@ void application::draw()
 std::vector<std::vector<math::vec2f>> strokes;
 void application::test()
 {
-    const auto im {input_manager::instance()};
+    //const auto im {input_manager::instance()};
     cam2d.update(window_projection);
 
-    const math::vec2f mouse_screen {im->get_mouse_gl().x, im->get_mouse_gl().y};
-    const math::vec2f mouse_world {cam2d.screen_to_world(mouse_screen, window_projection)};
-    if (strokes.empty()) strokes.emplace_back();
+    //const math::vec2f mouse_screen {im->get_mouse_gl().x, im->get_mouse_gl().y};
+    //const math::vec2f mouse_world {cam2d.screen_to_world(mouse_screen, window_projection)};
+    //if (strokes.empty()) strokes.emplace_back();
 
 
-    if (im->mouse_moving()) {
-        if (im->mouse_down(mouse_button::LEFT)) {
-            strokes.back().emplace_back(mouse_world);
-        }
-        if (im->mouse_released(mouse_button::LEFT)) {
-            strokes.back().emplace_back(mouse_world);
-            strokes.emplace_back();
-        }
-    }
+    //if (im->mouse_moving()) {
+    //    if (im->mouse_down(mouse_button::LEFT)) {
+    //        strokes.back().emplace_back(mouse_world);
+    //    }
+    //    if (im->mouse_released(mouse_button::LEFT)) {
+    //        strokes.back().emplace_back(mouse_world);
+    //        strokes.emplace_back();
+    //    }
+    //}
 
     {
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -1206,6 +1208,11 @@ void application::test()
         graphics::bind_frame_buffer_default();
         graphics::clear_buffer_all(0, graphics::WHITE, 1.0f, 0);
 
+        std::vector<graphics::line> lines {{{200, 200}, {500, 500}, 20.0f, {1.0f, 0.2f, 0.6f}}};
+        line_shader.set_mat4("u_mvp", window_projection*cam2d.view);
+        graphics::draw_lines_v2(lines, line_shader, 10.0f);
+
+        /*
         circle_batcher_shader.set_mat4("u_mvp", window_projection*cam2d.view);
 
         std::vector<graphics::circle> circles;
@@ -1215,6 +1222,7 @@ void application::test()
             }
         }
         graphics::draw_circles(circles, circle_batcher_shader);
+        */
 
         //graphics::bind_vertex_array(circle_vao);
         //math::mat4f m {math::translate(mouse_world.x, mouse_world.y, 0.0f)*

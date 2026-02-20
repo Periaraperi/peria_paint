@@ -105,6 +105,7 @@ private:
     gl::shader circle_batcher_shader;
     gl::shader colored_quad_shader;
     gl::shader textured_quad_shader;
+    gl::shader line_shader;
 
     gl::sampler sampler_linear;
     gl::sampler sampler_nearest;
