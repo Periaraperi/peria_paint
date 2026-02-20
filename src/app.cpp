@@ -1011,6 +1011,26 @@ void application::draw()
         textured_quad_shader.set_vec3("u_color_multiplier", {1.0f, 1.0f, 1.0f});
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
+        // brush cursor
+        {
+            graphics::bind_vertex_array(circle_vao);
+            const auto mouse_screen {input_manager::instance()->get_mouse_gl()};
+            const math::vec2f mouse_world {cam2d.screen_to_world({mouse_screen.x, mouse_screen.y}, window_projection)};
+            const math::mat4f model {math::translate(mouse_world.x, mouse_world.y, 0.0f)*
+                                     math::scale(2*info.current_brush_size, 2*info.current_brush_size, 1.0f)};
+
+            circle_shader.use_shader();
+            circle_shader.set_int("u_is_ring", true);
+            circle_shader.set_mat4("u_vp", window_projection*cam2d.view);
+            circle_shader.set_mat4("u_model", model);
+            circle_shader.set_float("u_radius", info.current_brush_size);
+            circle_shader.set_float("u_radius2", info.current_brush_size*0.90f);
+            circle_shader.set_vec2("u_center", mouse_world);
+            circle_shader.set_vec3("u_color", math::vec3f{0.0f, 0.0f, 0.0f});
+            circle_shader.set_float("u_aa", 0.0f);
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        }
+
         if (current_mode == app_mode::RESIZE) {
             graphics::bind_vertex_array(circle_vao);
 
