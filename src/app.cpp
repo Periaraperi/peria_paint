@@ -476,6 +476,7 @@ void application::run()
                 if (ImGui::Button("center")) {
                     cam2d.pos = {};
                     cam2d.zoom_scale = 1.0f;
+                    canvas.pos = 0.5f*peria::math::vec2f{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)};
                 }
                 if (ImGui::Button("pen")) {
                     current_mode = app_mode::DRAW;
