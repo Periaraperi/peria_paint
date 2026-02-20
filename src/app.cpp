@@ -729,6 +729,12 @@ void application::update([[maybe_unused]]float dt)
                 info.new_height = static_cast<int>(static_cast<float>(canvas.height)+dy*static_cast<float>(resize_dir.y));
             }
             if (info.resizing && im->mouse_released(mouse_button::LEFT)) {
+                if (info.new_width <= 0 || info.new_height <= 0) { // RESET
+                    info.resizing = false;
+                    info.resized = false;
+                    info.resize_button_index = -1;
+                    return;
+                }
                 temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA32F);
                 glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
                 const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
@@ -1023,7 +1029,7 @@ void application::draw()
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
             }
 
-            if (info.resizing) {
+            if (info.resizing && info.new_width > 0 && info.new_height > 0) {
                 const auto offset_x {info.new_width -canvas.width };
                 const auto offset_y {info.new_height-canvas.height};
                 const auto& cw {canvas.width};
