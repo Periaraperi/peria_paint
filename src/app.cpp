@@ -661,6 +661,13 @@ void application::update([[maybe_unused]]float dt)
                         }
                         last_valid_redo_index = last_stroke_index;
                     }
+                    if (!strokes[last_stroke_index].brush_points.empty()) {
+                        const auto& last {strokes[last_stroke_index].brush_points.back()};
+                        if (const auto current {math::vec2f{mouse_world-canvas_world_lower_left}};
+                            (current-last).len() <= strokes[last_stroke_index].brush_size*10.0f) {
+                            return;
+                        }
+                    }
                     strokes[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                     strokes[last_stroke_index].brush_size = info.current_brush_size;
                     strokes[last_stroke_index].aa = info.current_aa;
@@ -888,13 +895,21 @@ void application::draw()
 
     auto render_stroke = [this](const stroke& stroke) {
         std::vector<graphics::circle> samples;
-        for (float t{}; t<static_cast<float>(stroke.brush_points.size())-3.0f; t+=0.01f) {
+        for (float t{}; t<static_cast<float>(stroke.brush_points.size())-3.0f; t+=0.5f) {
             samples.emplace_back(graphics::circle{get_point_on_path(stroke.brush_points, t), stroke.color, stroke.brush_size});
         }
-
         circle_batcher_shader.set_mat4("u_mvp", canvas.projection);
         circle_batcher_shader.set_float("u_aa", stroke.aa);
         graphics::draw_circles(samples, circle_batcher_shader);
+
+        std::vector<graphics::line> lines;
+        for (std::size_t i{}; i<samples.size()-1; ++i) {
+            lines.emplace_back(graphics::line{samples[i].center, samples[i+1].center, stroke.brush_size, stroke.color});
+        }
+
+        line_shader.set_mat4("u_mvp", canvas.projection);
+        graphics::draw_lines_v2(lines, line_shader, stroke.aa);
+        ImGui::Text("lines: %zu circles: %zu", lines.size(), samples.size());
     };
 
     if (stroke_history.should_undo) {
@@ -977,11 +992,11 @@ void application::draw()
             render_points_with_line(stroke);
         }
         else if (stroke.brush_points.size() >= 4 && input_manager::instance()->mouse_moving()) {
-            std::vector<math::vec2f> ps;
-            for (std::size_t i{stroke.brush_points.size()-4}; i<stroke.brush_points.size(); ++i) {
-                ps.emplace_back(stroke.brush_points[i]);
-            }
-            render_stroke({std::move(ps), stroke.aa, stroke.brush_size, stroke.color, stroke.type});
+            //std::vector<math::vec2f> ps;
+            //for (std::size_t i{stroke.brush_points.size()-4}; i<stroke.brush_points.size(); ++i) {
+            //    ps.emplace_back(stroke.brush_points[i]);
+            //}
+            //render_stroke({std::move(ps), stroke.aa, stroke.brush_size, stroke.color, stroke.type});
         }
 
         if (info.drawing_finished) {
@@ -1181,26 +1196,59 @@ void application::draw()
     }
 }
 
-std::vector<std::vector<math::vec2f>> strokes;
 void application::test()
 {
-    //const auto im {input_manager::instance()};
+    static std::vector<std::vector<math::vec2f>> strokes;
+    static std::vector<math::vec2f> points;
+    static bool toggle_lines {true};
+    static bool toggle_circles {true};
+    static bool same_color {true};
+    static bool circle_smaller {false};
+    static float step {0.5f};
+    static float aa {1.0f};
+
+    const auto im {input_manager::instance()};
     cam2d.update(window_projection);
 
-    //const math::vec2f mouse_screen {im->get_mouse_gl().x, im->get_mouse_gl().y};
-    //const math::vec2f mouse_world {cam2d.screen_to_world(mouse_screen, window_projection)};
+    const math::vec2f mouse_screen {im->get_mouse_gl().x, im->get_mouse_gl().y};
+    const math::vec2f mouse_world {cam2d.screen_to_world(mouse_screen, window_projection)};
     //if (strokes.empty()) strokes.emplace_back();
 
-
-    //if (im->mouse_moving()) {
-    //    if (im->mouse_down(mouse_button::LEFT)) {
-    //        strokes.back().emplace_back(mouse_world);
-    //    }
-    //    if (im->mouse_released(mouse_button::LEFT)) {
-    //        strokes.back().emplace_back(mouse_world);
-    //        strokes.emplace_back();
-    //    }
+    //if (!imgui_.is_imgui_captured() && !imgui_.is_imgui_hovered() && im->mouse_pressed(mouse_button::LEFT)) {
+    //    points.emplace_back(mouse_world);
     //}
+
+    if (im->key_pressed(SDL_SCANCODE_1)) {
+        toggle_lines = !toggle_lines;
+    }
+    if (im->key_pressed(SDL_SCANCODE_2)) {
+        toggle_circles = !toggle_circles;
+    }
+    if (im->key_pressed(SDL_SCANCODE_3)) {
+        same_color = !same_color;
+    }
+    if (im->key_pressed(SDL_SCANCODE_4)) {
+        circle_smaller = !circle_smaller;
+    }
+
+    ImGui::SliderFloat("TTTT", &step, 0.001f, 1.0f);
+    ImGui::SliderFloat("AA", &aa, 0.00001f, 10.0f);
+
+    const math::vec3f circle_color {0.0f, 0.0f, 0.0f};
+    const math::vec3f line_color {0.4f, 1.0f, 0.2f};
+
+    if (im->mouse_moving()) {
+        if (!imgui_.is_imgui_captured() && !imgui_.is_imgui_hovered() && im->mouse_down(mouse_button::LEFT)) {
+            points.emplace_back(mouse_world);
+        }
+        //if (im->mouse_down(mouse_button::LEFT)) {
+        //    strokes.back().emplace_back(mouse_world);
+        //}
+        //if (im->mouse_released(mouse_button::LEFT)) {
+        //    strokes.back().emplace_back(mouse_world);
+        //    strokes.emplace_back();
+        //}
+    }
 
     {
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -1208,9 +1256,83 @@ void application::test()
         graphics::bind_frame_buffer_default();
         graphics::clear_buffer_all(0, graphics::WHITE, 1.0f, 0);
 
-        std::vector<graphics::line> lines {{{200, 200}, {500, 500}, 20.0f, {1.0f, 0.2f, 0.6f}}};
-        line_shader.set_mat4("u_mvp", window_projection*cam2d.view);
-        graphics::draw_lines_v2(lines, line_shader, 10.0f);
+
+        std::vector<graphics::circle> samples;
+        auto ps {points};
+        if (ps.size() > 1) {
+            ps.insert(ps.begin(), ps[0]-(ps[1]-ps[0]));
+            ps.emplace_back(ps[ps.size()-1]+(ps[ps.size()-1]-ps[ps.size()-2]));
+        }
+        float circle_radius {circle_smaller ? 9.0f : 10.0f};
+        for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=step) {
+            samples.emplace_back(graphics::circle{get_point_on_path(ps, t), circle_color, circle_radius});
+        }
+        if (toggle_circles) {
+            circle_batcher_shader.set_mat4("u_mvp", window_projection*cam2d.view);
+            circle_batcher_shader.set_float("u_aa", aa);
+            graphics::draw_circles(samples, circle_batcher_shader);
+        }
+
+        // artificial first and last control points
+        {
+            circle_batcher_shader.set_mat4("u_mvp", window_projection*cam2d.view);
+            circle_batcher_shader.set_float("u_aa", 0.001f);
+            std::vector<graphics::circle> control_points;
+            for (const auto& p:points) {
+                control_points.emplace_back(graphics::circle{p, {0.7f, 0.6f, 0.5f}, 5});
+            }
+            if (control_points.size() > 1) {
+                for (const auto& p:{ps.front(), ps.back()}) {
+                    control_points.emplace_back(graphics::circle{p, {0.2f, 0.2f, 1.0f}, 5});
+                }
+            }
+            graphics::draw_circles(control_points, circle_batcher_shader);
+        }
+
+        if (toggle_lines) {
+            std::vector<graphics::line> lines;
+            for (int i{}; i<static_cast<int>(samples.size()-1); ++i) {
+                lines.emplace_back(graphics::line{samples[i].center, samples[i+1].center, 10.0f, (same_color ? circle_color : line_color)});
+            }
+
+            line_shader.set_mat4("u_mvp", window_projection*cam2d.view);
+            graphics::draw_lines_v2(lines, line_shader, aa);
+        }
+
+
+        {
+            graphics::bind_vertex_array(circle_vao);
+            const math::mat4f model {math::translate(mouse_world.x, mouse_world.y, 0.0f)*
+                                     math::scale(2*10, 2*10, 1.0f)};
+
+            circle_shader.use_shader();
+            circle_shader.set_int("u_is_ring", true);
+            circle_shader.set_mat4("u_vp", window_projection*cam2d.view);
+            circle_shader.set_mat4("u_model", model);
+            circle_shader.set_float("u_radius", 10);
+            circle_shader.set_float("u_radius2", 10*0.90f);
+            circle_shader.set_vec2("u_center", mouse_world);
+            circle_shader.set_vec3("u_color", math::vec3f{0.0f, 0.0f, 0.0f});
+            circle_shader.set_float("u_aa", 0.0f);
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        }
+
+
+
+        //std::vector<graphics::line> lines;
+        //for (std::size_t i{}; i<samples.size()-1; ++i) {
+        //    lines.emplace_back(graphics::line{samples[i].center, samples[i+1].center, stroke.brush_size, stroke.color});
+        //}
+
+        //line_shader.set_mat4("u_mvp", canvas.projection);
+        //graphics::draw_lines_v2(lines, line_shader, stroke.aa);
+        //ImGui::Text("lines: %zu circles: %zu", lines.size(), samples.size());
+        
+
+
+        //std::vector<graphics::line> lines {{{200, 200}, {500, 500}, 20.0f, {1.0f, 0.2f, 0.6f}}};
+        //line_shader.set_mat4("u_mvp", window_projection*cam2d.view);
+        //graphics::draw_lines_v2(lines, line_shader, 10.0f);
 
         /*
         circle_batcher_shader.set_mat4("u_mvp", window_projection*cam2d.view);
