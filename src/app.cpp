@@ -661,13 +661,13 @@ void application::update([[maybe_unused]]float dt)
                         }
                         last_valid_redo_index = last_stroke_index;
                     }
-                    if (!strokes[last_stroke_index].brush_points.empty()) {
-                        const auto& last {strokes[last_stroke_index].brush_points.back()};
-                        if (const auto current {math::vec2f{mouse_world-canvas_world_lower_left}};
-                            (current-last).len() <= strokes[last_stroke_index].brush_size*10.0f) {
-                            return;
-                        }
-                    }
+                    //if (!strokes[last_stroke_index].brush_points.empty()) {
+                    //    const auto& last {strokes[last_stroke_index].brush_points.back()};
+                    //    if (const auto current {math::vec2f{mouse_world-canvas_world_lower_left}};
+                    //        (current-last).len() <= strokes[last_stroke_index].brush_size*10.0f) {
+                    //        return;
+                    //    }
+                    //}
                     strokes[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                     strokes[last_stroke_index].brush_size = info.current_brush_size;
                     strokes[last_stroke_index].aa = info.current_aa;
@@ -714,6 +714,21 @@ void application::update([[maybe_unused]]float dt)
             break;
         case app_mode::RESIZE: 
         {
+            if (ImGui::InputInt("NewWidth", &info.new_width)) { }
+            if (ImGui::InputInt("NewHeight", &info.new_height)) { }
+            if (ImGui::Button("ResizeNOW")) {
+                if (info.new_width > 0 && info.new_height > 0) {
+                    temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA32F);
+                    glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+                    const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
+                    if (status != GL_FRAMEBUFFER_COMPLETE) {
+                        std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+                    }
+                    info.resizing = false;
+                    info.resized = true;
+                    return;
+                }
+            }
             if (!info.resizing) {
                 // determine if we started resizing, and from which button.
                 int index {-1};
@@ -894,9 +909,14 @@ void application::draw()
     };
 
     auto render_stroke = [this](const stroke& stroke) {
+        const auto& bps {stroke.brush_points};
         std::vector<graphics::circle> samples;
-        for (float t{}; t<static_cast<float>(stroke.brush_points.size())-3.0f; t+=0.5f) {
-            samples.emplace_back(graphics::circle{get_point_on_path(stroke.brush_points, t), stroke.color, stroke.brush_size});
+        for (int i{3}; i<static_cast<int>(bps.size()); ++i) {
+            const std::vector<math::vec2f> ps {bps[i-3], bps[i-2], bps[i-1], bps[i]};
+            const float step {std::min(1.0f, 1.0f/std::max(0.00001f, (ps[1]-ps[2]).len()))};
+            for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=step) {
+                samples.emplace_back(graphics::circle{get_point_on_path(ps, t), stroke.color, stroke.brush_size});
+            }
         }
         circle_batcher_shader.set_mat4("u_mvp", canvas.projection);
         circle_batcher_shader.set_float("u_aa", stroke.aa);
@@ -909,7 +929,7 @@ void application::draw()
 
         line_shader.set_mat4("u_mvp", canvas.projection);
         graphics::draw_lines_v2(lines, line_shader, stroke.aa);
-        ImGui::Text("lines: %zu circles: %zu", lines.size(), samples.size());
+        //ImGui::Text("lines: %zu circles: %zu", lines.size(), samples.size());
     };
 
     if (stroke_history.should_undo) {
@@ -992,11 +1012,11 @@ void application::draw()
             render_points_with_line(stroke);
         }
         else if (stroke.brush_points.size() >= 4 && input_manager::instance()->mouse_moving()) {
-            //std::vector<math::vec2f> ps;
-            //for (std::size_t i{stroke.brush_points.size()-4}; i<stroke.brush_points.size(); ++i) {
-            //    ps.emplace_back(stroke.brush_points[i]);
-            //}
-            //render_stroke({std::move(ps), stroke.aa, stroke.brush_size, stroke.color, stroke.type});
+            std::vector<math::vec2f> ps;
+            for (std::size_t i{stroke.brush_points.size()-4}; i<stroke.brush_points.size(); ++i) {
+                ps.emplace_back(stroke.brush_points[i]);
+            }
+            render_stroke({std::move(ps), stroke.aa, stroke.brush_size, stroke.color, stroke.type});
         }
 
         if (info.drawing_finished) {
@@ -1202,10 +1222,12 @@ void application::test()
     static std::vector<math::vec2f> points;
     static bool toggle_lines {true};
     static bool toggle_circles {true};
+    static bool toggle_cp {true};
     static bool same_color {true};
     static bool circle_smaller {false};
     static float step {0.5f};
     static float aa {1.0f};
+    static float line_aa {1.0f};
 
     const auto im {input_manager::instance()};
     cam2d.update(window_projection);
@@ -1230,14 +1252,19 @@ void application::test()
     if (im->key_pressed(SDL_SCANCODE_4)) {
         circle_smaller = !circle_smaller;
     }
+    if (im->key_pressed(SDL_SCANCODE_5)) {
+        toggle_cp = !toggle_cp;
+    }
 
     ImGui::SliderFloat("TTTT", &step, 0.001f, 1.0f);
     ImGui::SliderFloat("AA", &aa, 0.00001f, 10.0f);
+    ImGui::SliderFloat("LineAA", &line_aa, 0.00001f, 10.0f);
 
     const math::vec3f circle_color {0.0f, 0.0f, 0.0f};
     const math::vec3f line_color {0.4f, 1.0f, 0.2f};
 
-    if (im->mouse_moving()) {
+    if (1 && im->mouse_moving()) 
+    {
         if (!imgui_.is_imgui_captured() && !imgui_.is_imgui_hovered() && im->mouse_down(mouse_button::LEFT)) {
             points.emplace_back(mouse_world);
         }
@@ -1256,17 +1283,23 @@ void application::test()
         graphics::bind_frame_buffer_default();
         graphics::clear_buffer_all(0, graphics::WHITE, 1.0f, 0);
 
-
         std::vector<graphics::circle> samples;
         auto ps {points};
         if (ps.size() > 1) {
-            ps.insert(ps.begin(), ps[0]-(ps[1]-ps[0]));
-            ps.emplace_back(ps[ps.size()-1]+(ps[ps.size()-1]-ps[ps.size()-2]));
+            ps.insert(ps.begin(), ps[0]-(ps[1]-ps[0]).normalize());
+            ps.emplace_back(ps[ps.size()-1]+(ps[ps.size()-1]-ps[ps.size()-2]).normalize());
         }
         float circle_radius {circle_smaller ? 9.0f : 10.0f};
-        for (float t{}; t<static_cast<float>(ps.size())-3.0f; t+=step) {
-            samples.emplace_back(graphics::circle{get_point_on_path(ps, t), circle_color, circle_radius});
+
+        for (int i{3}; i<ps.size(); ++i) {
+            const std::vector<math::vec2f> v {ps[i-3], ps[i-2], ps[i-1], ps[i]};
+            const float s {std::min(1.0f, 1.0f/std::max(0.00001f, (v[1]-v[2]).len()))};
+            ImGui::Text("%d - %f", i-3, s);
+            for (float t{}; t<static_cast<float>(v.size())-3.0f; t+=s) {
+                samples.emplace_back(graphics::circle{get_point_on_path(v, t), circle_color, circle_radius});
+            }
         }
+
         if (toggle_circles) {
             circle_batcher_shader.set_mat4("u_mvp", window_projection*cam2d.view);
             circle_batcher_shader.set_float("u_aa", aa);
@@ -1274,7 +1307,7 @@ void application::test()
         }
 
         // artificial first and last control points
-        {
+        if (toggle_cp) {
             circle_batcher_shader.set_mat4("u_mvp", window_projection*cam2d.view);
             circle_batcher_shader.set_float("u_aa", 0.001f);
             std::vector<graphics::circle> control_points;
@@ -1296,9 +1329,8 @@ void application::test()
             }
 
             line_shader.set_mat4("u_mvp", window_projection*cam2d.view);
-            graphics::draw_lines_v2(lines, line_shader, aa);
+            graphics::draw_lines_v2(lines, line_shader, line_aa);
         }
-
 
         {
             graphics::bind_vertex_array(circle_vao);
