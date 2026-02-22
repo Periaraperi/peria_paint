@@ -519,6 +519,70 @@ void application::run()
     }
 }
 
+bool application::bucket_fill(const math::vec2i& mp, const math::vec3f& new_color)
+{
+    if (mp.x < 0 || mp.y < 0 || mp.x > canvas.width || mp.y > canvas.height) return false;
+
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, canvas.width);
+    std::vector<float> pixels(static_cast<std::size_t>(canvas.width*canvas.height*4), 0);
+    glGetTextureImage(canvas.texture.id, 0, GL_RGBA, GL_FLOAT, static_cast<int>(pixels.size()*sizeof(float)), &pixels[0]);
+
+    std::vector<bool> visited(static_cast<std::size_t>(canvas.width)*static_cast<std::size_t>(canvas.height), false);
+
+    std::queue<math::vec2i> q;
+    q.push(mp);
+
+    std::vector<math::vec2i> to_color; 
+    to_color.reserve(visited.size()/2); // approx space
+
+    math::vec3f old_color {
+        pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 0)],
+        pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 1)],
+        pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 2)]
+    };
+
+    auto float_eq = [](float a, float b) {
+        constexpr float epsilon {0.000001f};
+        return std::abs(a-b) <= (std::max(a, b)*epsilon);
+    };
+
+    while (!q.empty()) {
+        const auto coord {q.front()}; q.pop();
+        if (visited[static_cast<std::size_t>(coord.y*canvas.width+coord.x)]) {
+            continue;
+        }
+        visited[static_cast<std::size_t>(coord.y*canvas.width+coord.x)] = true;
+        to_color.emplace_back(coord.x, coord.y);
+        for (int dx{-1}; dx<=1; ++dx) {
+            for (int dy{-1}; dy<=1; ++dy) {
+                if (dx == 0 && dy == 0) continue;
+                const auto x {coord.x + dx};
+                const auto y {coord.y + dy};
+                if ((x>=0 && x<canvas.width && y>=0 && y<canvas.height) && 
+                    !visited[static_cast<std::size_t>(y*canvas.width+x)] &&
+                    float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 0)], old_color.x) &&
+                    float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 1)], old_color.y) &&
+                    float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 2)], old_color.z)) {
+                    q.push({x, y});
+                }
+            }
+        }
+    }
+    for (const auto& [x, y]:to_color) {
+        pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 0)] = new_color.x; 
+        pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 1)] = new_color.y;
+        pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 2)] = new_color.z;
+        pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 3)] = 1.0f;
+    }
+
+    glTextureSubImage2D(canvas.texture.id, 0, 
+                        0, 0,
+                        canvas.width, canvas.height,
+                        GL_RGBA, GL_FLOAT, &pixels[0]);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); // don't forget this
+    return true;
+}
+
 void application::update([[maybe_unused]]float dt)
 {
     const auto im {input_manager::instance()};
@@ -571,80 +635,30 @@ void application::update([[maybe_unused]]float dt)
         case app_mode::DRAW:
         case app_mode::ERASER:
         {
+            auto& strokes {stroke_history.strokes};
+            auto& last_stroke_index {stroke_history.last_stroke_index};
+            auto& last_valid_redo_index {stroke_history.last_valid_redo_index};
+
             if (current_brush_type == brush_type::BUCKET && inside_canvas && im->mouse_pressed(mouse_button::LEFT) && !imgui_.is_imgui_hovered()) {
-                glPixelStorei(GL_UNPACK_ROW_LENGTH, canvas.width);
-                std::vector<float> pixels(static_cast<std::size_t>(canvas.width*canvas.height*4), 0);
-                glGetTextureImage(canvas.texture.id, 0, GL_RGBA, GL_FLOAT, static_cast<int>(pixels.size()*sizeof(float)), &pixels[0]);
-
-                // mouse position relative to canvas cast to ints to get pixel coords. (lower left of canvas is zero zero)
-                const math::vec2i mp {static_cast<int>(mouse_world.x-canvas_world_lower_left.x), static_cast<int>(mouse_world.y-canvas_world_lower_left.y)};
-
-                std::vector<bool> visited(static_cast<std::size_t>(canvas.width)*static_cast<std::size_t>(canvas.height), false);
-
-                std::queue<math::vec2i> q;
-                q.push(mp);
-
-                std::vector<math::vec2i> to_color; 
-                to_color.reserve(visited.size()/2); // approx space
-
-                // reuse brush color for bucket tool
-                math::vec3f new_color {info.current_color[0], info.current_color[1], info.current_color[2]};
-
-                math::vec3f old_color {
-                    pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 0)],
-                    pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 1)],
-                    pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 2)]
-                };
-
-                auto float_eq = [](float a, float b) {
-                    constexpr float epsilon {0.000001f};
-                    return std::abs(a-b) <= (std::max(a, b)*epsilon);
-                };
-
-                while (!q.empty()) {
-                    const auto coord {q.front()}; q.pop();
-                    if (visited[static_cast<std::size_t>(coord.y*canvas.width+coord.x)]) {
-                        continue;
-                    }
-                    visited[static_cast<std::size_t>(coord.y*canvas.width+coord.x)] = true;
-                    to_color.emplace_back(coord.x, coord.y);
-                    for (int dx{-1}; dx<=1; ++dx) {
-                        for (int dy{-1}; dy<=1; ++dy) {
-                            if (dx == 0 && dy == 0) continue;
-                            const auto x {coord.x + dx};
-                            const auto y {coord.y + dy};
-                            if ((x>=0 && x<canvas.width && y>=0 && y<canvas.height) && 
-                                !visited[static_cast<std::size_t>(y*canvas.width+x)] &&
-                                float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 0)], old_color.x) &&
-                                float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 1)], old_color.y) &&
-                                float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 2)], old_color.z)) {
-                                q.push({x, y});
-                            }
-                        }
-                    }
+                ++last_stroke_index;
+                if (stroke_history.last_stroke_index >= strokes.size()) strokes.emplace_back();
+                for (std::size_t i{last_stroke_index}; i<=last_valid_redo_index; ++i) {
+                    strokes[i].brush_size = 0.0f;
+                    strokes[i].aa = 0.0f;
+                    strokes[i].brush_points.clear();
+                    strokes[i].type = current_brush_type;
                 }
-                for (const auto& [x, y]:to_color) {
-                    pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 0)] = new_color.x; 
-                    pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 1)] = new_color.y;
-                    pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 2)] = new_color.z;
-                    pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 3)] = 1.0f;
-                }
-
-                glTextureSubImage2D(canvas.texture.id, 0, 
-                                    0, 0,
-                                    canvas.width, canvas.height,
-                                    GL_RGBA, GL_FLOAT, &pixels[0]);
-                glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); // don't forget this
+                last_valid_redo_index = last_stroke_index;
+                strokes[last_stroke_index].color = math::vec3f{info.current_color[0], info.current_color[1], info.current_color[2]};
+                strokes[last_stroke_index].type = current_brush_type;
+                strokes[last_stroke_index].mp = {static_cast<int>(mouse_world.x-canvas_world_lower_left.x), static_cast<int>(mouse_world.y-canvas_world_lower_left.y)};
+                bucket_fill(strokes[last_stroke_index].mp, strokes[last_stroke_index].color);
                 return;
             }
 
             if ((info.should_start_new_stroke && !inside_canvas) ||
                 (info.should_start_new_stroke && (imgui_.is_imgui_captured() || imgui_.is_imgui_hovered()))) break;
             
-            auto& strokes {stroke_history.strokes};
-            auto& last_stroke_index {stroke_history.last_stroke_index};
-            auto& last_valid_redo_index {stroke_history.last_valid_redo_index};
-
             if (im->key_down(SDL_SCANCODE_LCTRL) || 
                 current_brush_type == brush_type::BUCKET) return;
 
@@ -661,13 +675,6 @@ void application::update([[maybe_unused]]float dt)
                         }
                         last_valid_redo_index = last_stroke_index;
                     }
-                    //if (!strokes[last_stroke_index].brush_points.empty()) {
-                    //    const auto& last {strokes[last_stroke_index].brush_points.back()};
-                    //    if (const auto current {math::vec2f{mouse_world-canvas_world_lower_left}};
-                    //        (current-last).len() <= strokes[last_stroke_index].brush_size*10.0f) {
-                    //        return;
-                    //    }
-                    //}
                     strokes[last_stroke_index].brush_points.emplace_back(math::vec2f{mouse_world-canvas_world_lower_left});
                     strokes[last_stroke_index].brush_size = info.current_brush_size;
                     strokes[last_stroke_index].aa = info.current_aa;
@@ -850,9 +857,14 @@ void application::draw()
         info.resize_button_index = -1;
 
         // offset brush control points so that undo/redo doesn't break after resizing.
-        for (auto& s:stroke_history.strokes) {
-            for (auto& p:s.brush_points) {
-                p += (canvas_old_lower_left - canvas_new_lower_left);
+        {
+            const auto offset {canvas_old_lower_left - canvas_new_lower_left};
+            const math::vec2i offset_int {static_cast<int>(offset.x), static_cast<int>(offset.y)};
+            for (auto& s:stroke_history.strokes) {
+                s.mp += offset_int;
+                for (auto& p:s.brush_points) {
+                    p += offset;
+                }
             }
         }
     }
@@ -884,7 +896,7 @@ void application::draw()
         // Handle special case where stroke control points have more than a single point
         // and less than the amount needed for spline interpolation.
         // Draw a single line through them.
-
+        
         circle_shader.use_shader();
         circle_shader.set_int("u_is_ring", 0);
         const auto& first {stroke.brush_points.front()};
@@ -904,8 +916,8 @@ void application::draw()
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         }
 
-        colored_quad_shader.set_mat4("u_mvp", canvas.projection);
-        graphics::draw_lines({graphics::line{first, last, stroke.brush_size, stroke.color}}, colored_quad_shader);
+        line_shader.set_mat4("u_mvp", canvas.projection);
+        graphics::draw_lines_v2({graphics::line{first, last, stroke.brush_size, stroke.color}}, line_shader, stroke.aa);
     };
 
     auto render_stroke = [this](const stroke& stroke) {
@@ -929,7 +941,6 @@ void application::draw()
 
         line_shader.set_mat4("u_mvp", canvas.projection);
         graphics::draw_lines_v2(lines, line_shader, stroke.aa);
-        //ImGui::Text("lines: %zu circles: %zu", lines.size(), samples.size());
     };
 
     if (stroke_history.should_undo) {
@@ -944,6 +955,12 @@ void application::draw()
 
         for (std::size_t i{1}; i<=stroke_history.last_stroke_index; ++i) {
             const auto& stroke {stroke_history.strokes[i]};
+
+            if (stroke.type == brush_type::BUCKET) {
+                if (bucket_fill(stroke.mp, stroke.color)) {
+                    continue;
+                }
+            }
 
             if (stroke.type == brush_type::PEN) {
                 glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -972,6 +989,10 @@ void application::draw()
             ++stroke_history.last_stroke_index;
             const auto& stroke {stroke_history.strokes[stroke_history.last_stroke_index]};
 
+            bool filled {false};
+            if (stroke.type == brush_type::BUCKET) {
+                filled = bucket_fill(stroke.mp, stroke.color);
+            }
             if (stroke.type == brush_type::PEN) {
                 glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
             }
@@ -979,14 +1000,16 @@ void application::draw()
                 glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
             }
 
-            if (stroke.brush_points.size() == 1) {
-                render_single_point(stroke);
-            }
-            else if (stroke.brush_points.size() == 2 || stroke.brush_points.size() == 3) {
-                render_points_with_line(stroke);
-            }
-            else if (stroke.brush_points.size() >= 4) {
-                render_stroke(stroke);
+            if (!filled) {
+                if (stroke.brush_points.size() == 1) {
+                    render_single_point(stroke);
+                }
+                else if (stroke.brush_points.size() == 2 || stroke.brush_points.size() == 3) {
+                    render_points_with_line(stroke);
+                }
+                else if (stroke.brush_points.size() >= 4) {
+                    render_stroke(stroke);
+                }
             }
         }
         stroke_history.should_redo = false;

@@ -90,6 +90,8 @@ private:
     void draw();
     void test();
 
+    bool bucket_fill(const math::vec2i& mp, const math::vec3f& new_color);
+
     // gl entities.
     gl::vertex_array circle_vao;
     gl::vertex_array canvas_vao;
@@ -146,6 +148,7 @@ private:
         float brush_size {};
         math::vec3f color {};
         brush_type type;
+        math::vec2i mp {}; // use only when type == bucket, this is canvas relative pixel coordinates
     };
 
     struct history {
