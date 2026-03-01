@@ -90,6 +90,8 @@ private:
     void draw();
     void test();
 
+    bool bucket_fill(const math::vec2i& mp, const math::vec3f& new_color);
+
     // gl entities.
     gl::vertex_array circle_vao;
     gl::vertex_array canvas_vao;
@@ -105,6 +107,7 @@ private:
     gl::shader circle_batcher_shader;
     gl::shader colored_quad_shader;
     gl::shader textured_quad_shader;
+    gl::shader line_shader;
 
     gl::sampler sampler_linear;
     gl::sampler sampler_nearest;
@@ -141,10 +144,11 @@ private:
 
     struct stroke {
         std::vector<math::vec2f> brush_points; // stroke control points
-        float aa {1.0f};
-        float brush_size {10.0f};
+        float aa {};
+        float brush_size {};
         math::vec3f color {};
         brush_type type;
+        math::vec2i mp {}; // use only when type == bucket, this is canvas relative pixel coordinates
     };
 
     struct history {
@@ -164,7 +168,7 @@ private:
         bool drawing          {false};
         bool drawing_finished {false};
         bool should_start_new_stroke {true};
-        float current_brush_size {5.0f};
+        float current_brush_size {10.0f};
         float current_aa {1.0f};
         std::array<float, 3> current_color {};
 
