@@ -756,12 +756,24 @@ void application::update([[maybe_unused]]float dt)
             if (ImGui::InputInt("NewHeight", &info.new_height)) { }
             if (ImGui::Button("ResizeNOW")) {
                 if (info.new_width > 0 && info.new_height > 0) {
-                    temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA32F);
-                    glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
-                    const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
-                    if (status != GL_FRAMEBUFFER_COMPLETE) {
-                        std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+                    {
+                        temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA32F);
+                        glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+                        const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
+                        if (status != GL_FRAMEBUFFER_COMPLETE) {
+                            std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+                        }
                     }
+
+                    {
+                        final_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA32F);
+                        glNamedFramebufferTexture(final_canvas.buffer.id, GL_COLOR_ATTACHMENT0, final_canvas.texture.id, 0);
+                        const auto status {glCheckNamedFramebufferStatus(final_canvas.buffer.id, GL_FRAMEBUFFER)};
+                        if (status != GL_FRAMEBUFFER_COMPLETE) {
+                            std::println("FrameBuffer with id {} is incomplete\n {}", final_canvas.buffer.id, status);
+                        }
+                    }
+
                     info.resizing = false;
                     info.resized = true;
                     return;
@@ -801,11 +813,23 @@ void application::update([[maybe_unused]]float dt)
                     info.resize_button_index = -1;
                     return;
                 }
-                temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA32F);
-                glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
-                const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
-                if (status != GL_FRAMEBUFFER_COMPLETE) {
-                    std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+
+                {
+                    temp_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA32F);
+                    glNamedFramebufferTexture(temp_canvas.buffer.id, GL_COLOR_ATTACHMENT0, temp_canvas.texture.id, 0);
+                    const auto status {glCheckNamedFramebufferStatus(temp_canvas.buffer.id, GL_FRAMEBUFFER)};
+                    if (status != GL_FRAMEBUFFER_COMPLETE) {
+                        std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
+                    }
+                }
+
+                {
+                    final_canvas.texture = graphics::create_texture2d(info.new_width, info.new_height, GL_RGBA32F);
+                    glNamedFramebufferTexture(final_canvas.buffer.id, GL_COLOR_ATTACHMENT0, final_canvas.texture.id, 0);
+                    const auto status {glCheckNamedFramebufferStatus(final_canvas.buffer.id, GL_FRAMEBUFFER)};
+                    if (status != GL_FRAMEBUFFER_COMPLETE) {
+                        std::println("FrameBuffer with id {} is incomplete\n {}", final_canvas.buffer.id, status);
+                    }
                 }
                 info.resizing = false;
                 info.resized = true;
