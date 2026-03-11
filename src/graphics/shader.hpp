@@ -30,7 +30,6 @@ public:
     void set_uint(const char* u_name, u32 val) const noexcept;
     void set_float(const char* u_name, float val) const noexcept;
     void set_vec2(const char* u_name, const math::vec2f& v) const noexcept;
-    void set_ivec2(const char* u_name, const math::vec2i& v) const noexcept;
     void set_vec3(const char* u_name, const math::vec3f& v) const noexcept;
     void set_vec4(const char* u_name, const math::vec4f& v) const noexcept;
     void set_vec2(const char* u_name, float x, float y) const noexcept;

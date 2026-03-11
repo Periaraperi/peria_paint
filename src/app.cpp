@@ -211,8 +211,7 @@ application::application(application_settings&& settings)
             {},
             {}
      },
-     temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}}, {}},
-     final_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}}, {}}
+     temp_canvas{{gl::texture2d{graphics::create_texture2d(canvas.width, canvas.height, GL_RGBA32F)}}, {}}
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
@@ -323,16 +322,9 @@ application::application(application_settings&& settings)
             if (status != GL_FRAMEBUFFER_COMPLETE) {
                 std::println("FrameBuffer with id {} is incomplete\n {}", temp_canvas.buffer.id, status);
             }
-
-            glNamedFramebufferTexture(final_canvas.buffer.id, GL_COLOR_ATTACHMENT0, final_canvas.texture.id, 0);
-            status = glCheckNamedFramebufferStatus(final_canvas.buffer.id, GL_FRAMEBUFFER);
-            if (status != GL_FRAMEBUFFER_COMPLETE) {
-                std::println("FrameBuffer with id {} is incomplete\n {}", final_canvas.buffer.id, status);
-            }
         }
 
         textured_quad_shader.set_int("u_canvas_texture", 0);
-        textured_quad_shader.set_int("u_convert_to_srgb", true);
 
         canvas.projection = math::get_ortho_projection(0.0f, static_cast<float>(canvas.width), 0.0f, static_cast<float>(canvas.height));
         canvas.pos = 0.5f*peria::math::vec2f{static_cast<float>(graphics::get_screen_size().w), static_cast<float>(graphics::get_screen_size().h)};
@@ -344,7 +336,7 @@ application::application(application_settings&& settings)
     graphics::bind_frame_buffer(canvas.buffer);
     graphics::set_viewport(0, 0, canvas.width, canvas.height);
     const auto& [r, g, b] {info.bg_color};
-    graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 0.0f});
+    graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 1.0f});
 
     stroke_history.strokes.emplace_back();
     if (!std::filesystem::exists(std::filesystem::path{"saved"})) {
@@ -420,7 +412,7 @@ void application::run()
 
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::Button("save")) {
-                info.current_filename = graphics::write_to_png(final_canvas.texture, canvas.width, canvas.height, info.current_filename.c_str());
+                info.current_filename = graphics::write_to_png(canvas.texture, canvas.width, canvas.height, info.current_filename.c_str());
             }
 
             if (ImGui::BeginMenu("open")) {
@@ -486,7 +478,6 @@ void application::run()
                     info.current_aa = info.current_brush_size*0.1f;
                 }
                 if (ImGui::SliderFloat("brush_smoothness", &info.current_aa, 0.0f, info.current_brush_size)) {}
-                if (ImGui::SliderFloat("bucket_percentage", &info.current_bucket_area_percentage, 0.0f, 1.0f)) {}
                 if (ImGui::Button("center")) {
                     cam2d.pos = {};
                     cam2d.zoom_scale = 1.0f;
@@ -506,10 +497,6 @@ void application::run()
                 }
                 if (ImGui::Button("toggle filtering")) {
                     info.use_nearest = !info.use_nearest;
-                }
-
-                if (ImGui::Button("DO THE THING!")) {
-                    info.do_thing = !info.do_thing;
                 }
             }
             ImGui::End();
@@ -532,84 +519,66 @@ void application::run()
     }
 }
 
-bool application::bucket_fill(math::vec2i mp, const math::vec3f& new_color, float bucket_area_percent)
+bool application::bucket_fill(const math::vec2i& mp, const math::vec3f& new_color)
 {
     if (mp.x < 0 || mp.y < 0 || mp.x > canvas.width || mp.y > canvas.height) return false;
 
-    auto dim_x {static_cast<int>(canvas.width*bucket_area_percent)};
-    auto dim_y {static_cast<int>(canvas.height*bucket_area_percent)};
-    math::vec2i lower_left  {mp-math::vec2i{dim_x/2, dim_y/2}};
-    math::vec2i upper_right {mp+math::vec2i{dim_x/2, dim_y/2}};
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, canvas.width);
+    std::vector<float> pixels(static_cast<std::size_t>(canvas.width*canvas.height*4), 0);
+    glGetTextureImage(canvas.texture.id, 0, GL_RGBA, GL_FLOAT, static_cast<int>(pixels.size()*sizeof(float)), &pixels[0]);
 
-    lower_left.x  = std::max(0,               lower_left.x);
-    lower_left.y  = std::max(0,               lower_left.y);
-    upper_right.x = std::min(canvas.width,  upper_right.x);
-    upper_right.y = std::min(canvas.height, upper_right.y);
-    dim_x = upper_right.x-lower_left.x;
-    dim_y = upper_right.y-lower_left.y;
-
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, dim_x);
-
-    std::vector<float> pixels(static_cast<std::size_t>(dim_x*dim_y*4), 0);
-    //glGetTextureImage(canvas.texture.id, 0, GL_RGBA, GL_FLOAT, static_cast<int>(pixels.size()*sizeof(float)), &pixels[0]);
-    glGetTextureSubImage(canvas.texture.id, 0, lower_left.x, lower_left.y, 0, dim_x, dim_y, 1, GL_RGBA, GL_FLOAT, static_cast<int>(pixels.size()*sizeof(float)), pixels.data());
-
-    std::vector<bool> visited(static_cast<std::size_t>(dim_x)*static_cast<std::size_t>(dim_y), false);
+    std::vector<bool> visited(static_cast<std::size_t>(canvas.width)*static_cast<std::size_t>(canvas.height), false);
 
     std::queue<math::vec2i> q;
-    
-    mp -= lower_left;
-    std::println("ms {} {}", mp.x, mp.y);
     q.push(mp);
 
     std::vector<math::vec2i> to_color; 
     to_color.reserve(visited.size()/2); // approx space
 
     math::vec3f old_color {
-        pixels[static_cast<std::size_t>((mp.y*dim_x+mp.x)*4 + 0)],
-        pixels[static_cast<std::size_t>((mp.y*dim_x+mp.x)*4 + 1)],
-        pixels[static_cast<std::size_t>((mp.y*dim_x+mp.x)*4 + 2)]
+        pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 0)],
+        pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 1)],
+        pixels[static_cast<std::size_t>((mp.y*canvas.width+mp.x)*4 + 2)]
     };
 
     auto float_eq = [](float a, float b) {
         constexpr float epsilon {0.000001f};
         return std::abs(a-b) <= (std::max(a, b)*epsilon);
     };
+
     while (!q.empty()) {
         const auto coord {q.front()}; q.pop();
-        if (visited[static_cast<std::size_t>(coord.y*dim_x+coord.x)]) {
+        if (visited[static_cast<std::size_t>(coord.y*canvas.width+coord.x)]) {
             continue;
         }
-        visited[static_cast<std::size_t>(coord.y*dim_x+coord.x)] = true;
+        visited[static_cast<std::size_t>(coord.y*canvas.width+coord.x)] = true;
         to_color.emplace_back(coord.x, coord.y);
         for (int dx{-1}; dx<=1; ++dx) {
             for (int dy{-1}; dy<=1; ++dy) {
                 if (dx == 0 && dy == 0) continue;
                 const auto x {coord.x + dx};
                 const auto y {coord.y + dy};
-                if ((x>=0 && x<dim_x && y>=0 && y<dim_y) && 
-                    !visited[static_cast<std::size_t>(y*dim_x+x)] &&
-                    float_eq(pixels[static_cast<std::size_t>((y*dim_x+x)*4 + 0)], old_color.x) &&
-                    float_eq(pixels[static_cast<std::size_t>((y*dim_x+x)*4 + 1)], old_color.y) &&
-                    float_eq(pixels[static_cast<std::size_t>((y*dim_x+x)*4 + 2)], old_color.z)) {
+                if ((x>=0 && x<canvas.width && y>=0 && y<canvas.height) && 
+                    !visited[static_cast<std::size_t>(y*canvas.width+x)] &&
+                    float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 0)], old_color.x) &&
+                    float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 1)], old_color.y) &&
+                    float_eq(pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 2)], old_color.z)) {
                     q.push({x, y});
                 }
             }
         }
     }
-
     for (const auto& [x, y]:to_color) {
-        pixels[static_cast<std::size_t>((y*dim_x+x)*4 + 0)] = new_color.x; 
-        pixels[static_cast<std::size_t>((y*dim_x+x)*4 + 1)] = new_color.y;
-        pixels[static_cast<std::size_t>((y*dim_x+x)*4 + 2)] = new_color.z;
-        pixels[static_cast<std::size_t>((y*dim_x+x)*4 + 3)] = 1.0f;
+        pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 0)] = new_color.x; 
+        pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 1)] = new_color.y;
+        pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 2)] = new_color.z;
+        pixels[static_cast<std::size_t>((y*canvas.width+x)*4 + 3)] = 1.0f;
     }
 
-    std::println("{} {} {} {}", lower_left.x, lower_left.y, dim_x, dim_y);
-    glTextureSubImage2D(canvas.texture.id, 0,
-                        lower_left.x, lower_left.y,
-                        dim_x, dim_y,
-                        GL_RGBA, GL_FLOAT, pixels.data());
+    glTextureSubImage2D(canvas.texture.id, 0, 
+                        0, 0,
+                        canvas.width, canvas.height,
+                        GL_RGBA, GL_FLOAT, &pixels[0]);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); // don't forget this
     return true;
 }
@@ -639,7 +608,7 @@ void application::update([[maybe_unused]]float dt)
         stroke_history.should_redo = true;
     }
     if (im->key_down(SDL_SCANCODE_LCTRL) && im->key_pressed(SDL_SCANCODE_S)) {
-        info.current_filename = graphics::write_to_png(final_canvas.texture, canvas.width, canvas.height, info.current_filename.c_str());
+        info.current_filename = graphics::write_to_png(canvas.texture, canvas.width, canvas.height, info.current_filename.c_str());
     }
 
     cam2d.update(window_projection);
@@ -652,12 +621,13 @@ void application::update([[maybe_unused]]float dt)
     // eye drop tool here
     if (inside_canvas && im->key_down(SDL_SCANCODE_LCTRL) && im->mouse_pressed(mouse_button::LEFT)) {
 
-        std::vector<float> pixels(4, 0);
+        std::vector<float> pixels(static_cast<std::size_t>(canvas.width*canvas.height*4), 0);
+        glGetTextureImage(canvas.texture.id, 0, GL_RGBA, GL_FLOAT, static_cast<int>(pixels.size()*sizeof(float)), &pixels[0]);
         const math::vec2i mp {static_cast<int>(mouse_world.x-canvas_world_lower_left.x), static_cast<int>(mouse_world.y-canvas_world_lower_left.y)};
-        glGetTextureSubImage(canvas.texture.id, 0, mp.x, mp.y, 0, 1, 1, 1, GL_RGBA, GL_FLOAT, static_cast<int>(pixels.size()*sizeof(float)), pixels.data());
-        info.current_color[0] = pixels[0];
-        info.current_color[1] = pixels[1];
-        info.current_color[2] = pixels[2];
+
+        info.current_color[0] = pixels[static_cast<std::size_t>(mp.y*canvas.width+mp.x)*4 + 0];
+        info.current_color[1] = pixels[static_cast<std::size_t>(mp.y*canvas.width+mp.x)*4 + 1];
+        info.current_color[2] = pixels[static_cast<std::size_t>(mp.y*canvas.width+mp.x)*4 + 2];
         return;
     }
 
@@ -681,9 +651,8 @@ void application::update([[maybe_unused]]float dt)
                 last_valid_redo_index = last_stroke_index;
                 strokes[last_stroke_index].color = math::vec3f{info.current_color[0], info.current_color[1], info.current_color[2]};
                 strokes[last_stroke_index].type = current_brush_type;
-                strokes[last_stroke_index].bucket_area_percentage = info.current_bucket_area_percentage;
                 strokes[last_stroke_index].mp = {static_cast<int>(mouse_world.x-canvas_world_lower_left.x), static_cast<int>(mouse_world.y-canvas_world_lower_left.y)};
-                bucket_fill(strokes[last_stroke_index].mp, strokes[last_stroke_index].color, strokes[last_stroke_index].bucket_area_percentage);
+                bucket_fill(strokes[last_stroke_index].mp, strokes[last_stroke_index].color);
                 return;
             }
 
@@ -833,7 +802,7 @@ void application::draw()
         graphics::bind_frame_buffer(temp_canvas.buffer);
         graphics::set_viewport(0, 0, temp_canvas.width, temp_canvas.height);
         const auto& [r, g, b] {info.bg_color};
-        graphics::clear_buffer_color(temp_canvas.buffer.id, graphics::color{r, g, b, 0.0f});
+        graphics::clear_buffer_color(temp_canvas.buffer.id, graphics::color{r, g, b, 1.0f});
 
         const auto w {std::min(temp_canvas.width,  canvas.width)};
         const auto h {std::min(temp_canvas.height, canvas.height)};
@@ -978,7 +947,7 @@ void application::draw()
         graphics::bind_frame_buffer(canvas.buffer);
         graphics::set_viewport(0, 0, canvas.width, canvas.height);
         const auto& [r, g, b] {info.bg_color};
-        graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 0.0f});
+        graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 1.0f});
 
         if (stroke_history.last_stroke_index > 0) {
             --stroke_history.last_stroke_index;
@@ -988,7 +957,7 @@ void application::draw()
             const auto& stroke {stroke_history.strokes[i]};
 
             if (stroke.type == brush_type::BUCKET) {
-                if (bucket_fill(stroke.mp, stroke.color, stroke.bucket_area_percentage)) {
+                if (bucket_fill(stroke.mp, stroke.color)) {
                     continue;
                 }
             }
@@ -1022,7 +991,7 @@ void application::draw()
 
             bool filled {false};
             if (stroke.type == brush_type::BUCKET) {
-                filled = bucket_fill(stroke.mp, stroke.color, stroke.bucket_area_percentage);
+                filled = bucket_fill(stroke.mp, stroke.color);
             }
             if (stroke.type == brush_type::PEN) {
                 glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -1080,29 +1049,10 @@ void application::draw()
         }
     }
 
-    // render canvas strokes onto separate background texture
-    {
-        graphics::bind_frame_buffer(final_canvas.buffer);
-        const auto [r, g, b] {info.bg_color};
-        graphics::clear_buffer_color(final_canvas.buffer.id, graphics::color{r, g, b, 1.0f});
-        graphics::set_viewport(0, 0, canvas.width, canvas.height);
-
-        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        
-        graphics::bind_vertex_array(canvas_vao);
-        graphics::bind_texture_and_sampler(canvas.texture, sampler_nearest, 0);
-
-        textured_quad_shader.use_shader();
-        textured_quad_shader.set_mat4("u_mvp", math::scale(2.0f, 2.0f, 1.0f));
-        textured_quad_shader.set_int("u_convert_to_srgb", false);
-        textured_quad_shader.set_vec3("u_color_multiplier", {1, 1, 1});
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-    }
-
     // Everything below is done in main framebuffer
     // POST canvas rendering / final pass
     {
-        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         graphics::set_viewport(0, 0, app_settings_.window_width, app_settings_.window_height);
         graphics::bind_frame_buffer_default();
         graphics::clear_buffer_all(0, graphics::GREY, 1.0f, 0);
@@ -1113,17 +1063,14 @@ void application::draw()
         graphics::bind_vertex_array(canvas_vao);
         textured_quad_shader.use_shader();
         textured_quad_shader.set_mat4("u_mvp", window_projection*cam2d.view*canvas_world_model);
-        textured_quad_shader.set_int("u_convert_to_srgb", true);
 
-        //graphics::bind_texture_and_sampler(canvas_bg, sampler_nearest, 0);
+        //graphics::bind_texture_and_sampler(canvas_bg, canvas.sampler, 0);
         //const auto& [r, g, b] {info.bg_color};
         //textured_quad_shader.set_vec3("u_color_multiplier", {r, g, b});
-        //textured_quad_shader.set_int("u_convert_to_srgb", true);
         //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
-        if (info.use_nearest) graphics::bind_texture_and_sampler(final_canvas.texture, sampler_nearest, 0);
-        else graphics::bind_texture_and_sampler(final_canvas.texture, sampler_linear, 0);
-
+        if (info.use_nearest) graphics::bind_texture_and_sampler(canvas.texture, sampler_nearest, 0);
+        else graphics::bind_texture_and_sampler(canvas.texture, sampler_linear, 0);
         textured_quad_shader.set_vec3("u_color_multiplier", {1.0f, 1.0f, 1.0f});
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 

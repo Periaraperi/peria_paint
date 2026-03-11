@@ -117,9 +117,6 @@ void shader::set_vec4(const char* u_name, const graphics::color& v) const noexce
 void shader::set_vec2(const char* u_name, const math::vec2f& v) const noexcept
 { glProgramUniform2f(id, glGetUniformLocation(id, u_name), v.x, v.y); }
 
-void shader::set_ivec2(const char* u_name, const math::vec2i& v) const noexcept
-{ glProgramUniform2i(id, glGetUniformLocation(id, u_name), v.x, v.y); }
-
 void shader::set_vec3(const char* u_name, const math::vec3f& v) const noexcept
 { glProgramUniform3f(id, glGetUniformLocation(id, u_name), v.x, v.y, v.z); }
 
