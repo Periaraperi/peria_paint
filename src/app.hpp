@@ -90,7 +90,7 @@ private:
     void draw();
     void test();
 
-    bool bucket_fill(const math::vec2i& mp, const math::vec3f& new_color);
+    bool bucket_fill(math::vec2i mp, const math::vec3f& new_color, float bucket_area_percent);
 
     // gl entities.
     gl::vertex_array circle_vao;
@@ -139,8 +139,9 @@ private:
         math::mat4f projection {};
     };
 
-    draw_region canvas {};
-    draw_region temp_canvas {};
+    draw_region canvas {}; // currently using this for brush strokes, eraser, fill
+    draw_region temp_canvas {}; // helper temp canvas for resizing
+    draw_region final_canvas {}; // final image + background before we go to screen quad.
 
     struct stroke {
         std::vector<math::vec2f> brush_points; // stroke control points
@@ -149,6 +150,7 @@ private:
         math::vec3f color {};
         brush_type type;
         math::vec2i mp {}; // use only when type == bucket, this is canvas relative pixel coordinates
+        float bucket_area_percentage {0.20f};
     };
 
     struct history {
@@ -160,6 +162,7 @@ private:
     } stroke_history;
     
     struct info {
+        bool do_thing {false};
         std::string current_filename {""};
         std::array<float, 3> bg_color {1.0f, 1.0f, 1.0f};
         bool use_nearest {true};
@@ -171,6 +174,7 @@ private:
         float current_brush_size {10.0f};
         float current_aa {1.0f};
         std::array<float, 3> current_color {};
+        float current_bucket_area_percentage {0.20f};
 
         // canvas resizing information
         bool resized {false};
