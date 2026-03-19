@@ -27,8 +27,8 @@ constexpr int MAX_FPS {500};
 float lerp(float a, float b, float t) noexcept
 { return a*(1.0f - t) + b*t; }
 
-[[nodiscard]]
-bool point_inside_rect(const peria::math::vec2f& point_to_check, const peria::math::vec2f& rect_lower_left, const peria::math::vec2f& rect_size) noexcept
+template<typename T>
+[[nodiscard]] bool point_inside_rect(const peria::math::vec2<T>& point_to_check, const peria::math::vec2<T>& rect_lower_left, const peria::math::vec2<T>& rect_size) noexcept
 {
     return point_to_check.x >= rect_lower_left.x && 
            point_to_check.x <= rect_lower_left.x+rect_size.x &&
@@ -507,6 +507,9 @@ void application::run()
                 if (ImGui::Button("toggle filtering")) {
                     info.use_nearest = !info.use_nearest;
                 }
+                if (ImGui::Button("selection")) {
+                    current_mode = app_mode::SELECTION;
+                }
 
                 if (ImGui::Button("DO THE THING!")) {
                     info.do_thing = !info.do_thing;
@@ -836,6 +839,94 @@ void application::update([[maybe_unused]]float dt)
             }
         }
             break;
+        case app_mode::SELECTION:
+        {
+            if (!info.selection_started && !info.selected && inside_canvas && 
+                im->mouse_pressed(mouse_button::LEFT)) {
+                info.selection_started = true;
+                info.selection_start_coords = {mouse_world-canvas_world_lower_left};
+                info.selection_end_coords = info.selection_start_coords;
+            }
+            if (info.selection_started) {
+                if (im->mouse_down(mouse_button::LEFT)) {
+                    info.selection_end_coords = {mouse_world-canvas_world_lower_left};
+                }
+                else if (im->mouse_released(mouse_button::LEFT)) {
+                    info.selection_started = false;
+                    info.selected = true;
+                    info.selection_end_coords = {mouse_world-canvas_world_lower_left};
+
+                    const math::vec2i dims {static_cast<int>(std::abs(info.selection_end_coords.x - info.selection_start_coords.x)),
+                                            static_cast<int>(std::abs(info.selection_end_coords.y - info.selection_start_coords.y))};
+
+                    std::println("Wow");
+                    if (dims.x < 1 || dims.y < 1) return;
+
+                    info.selection_texture = graphics::create_texture2d(dims.x, dims.y, GL_RGBA32F);
+
+                    const math::vec2i lower_left  {static_cast<int>(std::min(info.selection_start_coords.x, info.selection_end_coords.x)),
+                                                   static_cast<int>(std::min(info.selection_start_coords.y, info.selection_end_coords.y))};
+                    const math::vec2i upper_right {static_cast<int>(std::max(info.selection_start_coords.x, info.selection_end_coords.x)),
+                                                   static_cast<int>(std::max(info.selection_start_coords.y, info.selection_end_coords.y))};
+                    
+                    glCopyImageSubData(canvas.texture.id, GL_TEXTURE_2D, 0, lower_left.x, lower_left.y, 0,
+                                       info.selection_texture.id, GL_TEXTURE_2D, 0, 0, 0, 0,
+                                       dims.x, dims.y, 1);
+                }
+            }
+            else if (info.selected) {
+                const math::vec2i mm {static_cast<int>(mouse_world.x-canvas_world_lower_left.x), static_cast<int>(mouse_world.y-canvas_world_lower_left.y)};
+                const math::vec2i dims {static_cast<int>(std::abs(info.selection_end_coords.x - info.selection_start_coords.x)),
+                                        static_cast<int>(std::abs(info.selection_end_coords.y - info.selection_start_coords.y))};
+                const math::vec2i lower_left  {static_cast<int>(std::min(info.selection_start_coords.x, info.selection_end_coords.x)),
+                                               static_cast<int>(std::min(info.selection_start_coords.y, info.selection_end_coords.y))};
+                bool inside_selection {point_inside_rect(mm, lower_left, dims)};
+
+                if (!inside_selection && im->mouse_pressed(mouse_button::LEFT) ) {
+                    std::println("HEHEHEHEHEHEHHE");
+                    info.selection_copied_to_texture = false;
+                    info.selection_started = false;
+                    info.selected = false;
+                    info.selection_moving = false;
+                    return;
+                }
+
+                if (info.selection_moving && im->mouse_released(mouse_button::LEFT)) {
+                    info.selection_moving = false;
+                    return;
+                }
+
+                if (!info.selection_moving && inside_selection && 
+                    im->mouse_down(mouse_button::LEFT) && im->mouse_moving()) {
+                    info.selection_moving = true;
+                    if (!info.selection_copied_to_texture) {
+                        info.selection_copied_to_texture = true;
+                        std::vector<float> pixels(static_cast<std::size_t>(dims.x*dims.y*4), 0);
+                        const auto [r, g, b] {info.bg_color};
+                        for (int i{}; i<dims.x*dims.y*4; i += 4) {
+                            pixels[static_cast<std::size_t>(i + 0)] = r;
+                            pixels[static_cast<std::size_t>(i + 1)] = g;
+                            pixels[static_cast<std::size_t>(i + 2)] = b;
+                            pixels[static_cast<std::size_t>(i + 3)] = 0;
+                        }
+                        glTextureSubImage2D(canvas.texture.id, 0,
+                                            lower_left.x, lower_left.y,
+                                            dims.x, dims.y,
+                                            GL_RGBA, GL_FLOAT, pixels.data());
+                    }
+
+                    const math::vec2f rel_motion {graphics::get_relative_motion().x, graphics::get_relative_motion().y};
+                    info.selection_start_coords += rel_motion;
+                    info.selection_end_coords   += rel_motion;
+                }
+                else if (info.selection_moving && im->mouse_down(mouse_button::LEFT) && im->mouse_moving()) {
+                    const math::vec2f rel_motion {graphics::get_relative_motion().x, graphics::get_relative_motion().y};
+                    info.selection_start_coords += rel_motion;
+                    info.selection_end_coords   += rel_motion;
+                }
+            }
+        }
+            break;
         default:
             break;
     }
@@ -1121,6 +1212,44 @@ void application::draw()
         textured_quad_shader.set_int("u_convert_to_srgb", false);
         textured_quad_shader.set_vec3("u_color_multiplier", {1, 1, 1});
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+        if (info.selection_started || info.selected) {
+            const math::vec2f len {std::abs(info.selection_end_coords.x - info.selection_start_coords.x),
+                                   std::abs(info.selection_end_coords.y - info.selection_start_coords.y)};
+
+            math::vec2f lower_left  {std::min(info.selection_start_coords.x, info.selection_end_coords.x),
+                                     std::min(info.selection_start_coords.y, info.selection_end_coords.y)};
+            math::vec2f upper_right {std::max(info.selection_start_coords.x, info.selection_end_coords.x),
+                                     std::max(info.selection_start_coords.y, info.selection_end_coords.y)};
+            math::vec2f upper_left  {lower_left.x,       lower_left.y+len.y};
+            math::vec2f lower_right {lower_left.x+len.x, lower_left.y      };
+
+            if (info.selected && info.selection_copied_to_texture) {
+                math::mat4f selection_model {math::translate(lower_left.x+len.x/2, lower_left.y+len.y/2, 0.0f)*
+                                             math::scale(len.x, len.y, 1.0f)};
+
+                graphics::bind_vertex_array(canvas_vao); // use this vao for quad as well
+                textured_quad_shader.use_shader();
+                textured_quad_shader.set_mat4("u_mvp", canvas.projection*selection_model);
+                textured_quad_shader.set_int("u_convert_to_srgb", false);
+                graphics::bind_texture_and_sampler(info.selection_texture, sampler_nearest, 0);
+                textured_quad_shader.set_vec3("u_color_multiplier", {1.0f, 1.0f, 1.0f});
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+            }
+
+            float thickness {2.0f};
+            const math::vec3 color {0.5f, 0.2f, 0.1f};
+            std::vector<graphics::line> selection_lines {
+                {lower_left, upper_left, thickness, color},
+                {upper_left, upper_right, thickness, color},
+                {upper_right, lower_right, thickness, color},
+                {lower_right, lower_left, thickness, color},
+            };
+
+            colored_quad_shader.set_mat4("u_mvp", canvas.projection);
+            graphics::draw_lines(selection_lines, colored_quad_shader);
+        }
     }
 
     // Everything below is done in main framebuffer

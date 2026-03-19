@@ -120,7 +120,8 @@ private:
     enum class app_mode {
         DRAW = 0,
         ERASER,
-        RESIZE
+        RESIZE,
+        SELECTION
     } current_mode {app_mode::DRAW};
 
     enum class brush_type {
@@ -183,6 +184,15 @@ private:
         int new_height {};
         int resize_button_index {-1};
         float resize_button_radius {7.0f};
+
+        // selection
+        bool selection_started {false};
+        bool selected {false};
+        bool selection_moving {false};
+        bool selection_copied_to_texture {false};
+        math::vec2f selection_start_coords {}; // relative to canvas. Canvas lower left is (0,0)
+        math::vec2f selection_end_coords {};
+        gl::texture2d selection_texture;
     } info;
 
     std::array<math::vec2i, 8> canvas_resize_dirs {{
