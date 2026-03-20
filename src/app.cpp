@@ -664,14 +664,13 @@ void application::update([[maybe_unused]]float dt)
         return;
     }
 
+    auto& strokes {stroke_history.strokes};
+    auto& last_stroke_index {stroke_history.last_stroke_index};
+    auto& last_valid_redo_index {stroke_history.last_valid_redo_index};
     switch (current_mode) {
         case app_mode::DRAW:
         case app_mode::ERASER:
         {
-            auto& strokes {stroke_history.strokes};
-            auto& last_stroke_index {stroke_history.last_stroke_index};
-            auto& last_valid_redo_index {stroke_history.last_valid_redo_index};
-
             if (current_brush_type == brush_type::BUCKET && inside_canvas && im->mouse_pressed(mouse_button::LEFT) && !imgui_.is_imgui_hovered()) {
                 ++last_stroke_index;
                 if (stroke_history.last_stroke_index >= strokes.size()) strokes.emplace_back();
@@ -864,10 +863,26 @@ void application::update([[maybe_unused]]float dt)
 
                     info.selection_texture = graphics::create_texture2d(dims.x, dims.y, GL_RGBA32F);
 
+                    {
+                        ++last_stroke_index; // may need to revert back, because at this stage selection may not be committed.
+                        if (last_stroke_index >= strokes.size()) strokes.emplace_back();
+                        for (std::size_t i{last_stroke_index}; i<=last_valid_redo_index; ++i) {
+                            strokes[i].brush_size = 0.0f;
+                            strokes[i].aa = 0.0f;
+                            strokes[i].brush_points.clear();
+                            strokes[i].selection = {};
+                            strokes[i].is_selection = false;
+                        }
+                        strokes[last_stroke_index].is_selection = true;
+                        last_valid_redo_index = last_stroke_index;
+                    }
+
                     const math::vec2i lower_left  {static_cast<int>(std::min(info.selection_start_coords.x, info.selection_end_coords.x)),
                                                    static_cast<int>(std::min(info.selection_start_coords.y, info.selection_end_coords.y))};
                     const math::vec2i upper_right {static_cast<int>(std::max(info.selection_start_coords.x, info.selection_end_coords.x)),
                                                    static_cast<int>(std::max(info.selection_start_coords.y, info.selection_end_coords.y))};
+                    strokes[last_stroke_index].selection.dims = dims;
+                    strokes[last_stroke_index].selection.start_lower_left = lower_left;
                     
                     glCopyImageSubData(canvas.texture.id, GL_TEXTURE_2D, 0, lower_left.x, lower_left.y, 0,
                                        info.selection_texture.id, GL_TEXTURE_2D, 0, 0, 0, 0,
@@ -883,11 +898,20 @@ void application::update([[maybe_unused]]float dt)
                 bool inside_selection {point_inside_rect(mm, lower_left, dims)};
 
                 if (!inside_selection && im->mouse_pressed(mouse_button::LEFT) ) {
-                    std::println("HEHEHEHEHEHEHHE");
+                    if (!info.selection_copied_to_texture) { // We didn't really move selection so no point in adding it to history.
+                        strokes[last_stroke_index].is_selection = false;
+                        strokes[last_stroke_index].selection = {};
+                        --last_stroke_index;
+                        last_valid_redo_index = last_stroke_index;
+                    }
+                    else {
+                        strokes[last_stroke_index].selection.end_lower_left = lower_left;
+                    }
                     info.selection_copied_to_texture = false;
                     info.selection_started = false;
                     info.selected = false;
                     info.selection_moving = false;
+                    info.selection_write = true;
                     return;
                 }
 
@@ -1101,6 +1125,44 @@ void application::draw()
 
         for (std::size_t i{1}; i<=stroke_history.last_stroke_index; ++i) {
             const auto& stroke {stroke_history.strokes[i]};
+            if (stroke.is_selection) {
+                const auto& dims {stroke.selection.dims};
+                std::vector<float> pixels(static_cast<std::size_t>(dims.x*dims.y*4), 0);
+                for (int j{}; j<dims.x*dims.y*4; j += 4) {
+                    pixels[static_cast<std::size_t>(j + 0)] = r;
+                    pixels[static_cast<std::size_t>(j + 1)] = g;
+                    pixels[static_cast<std::size_t>(j + 2)] = b;
+                    pixels[static_cast<std::size_t>(j + 3)] = 0;
+                }
+
+                info.selection_texture = graphics::create_texture2d(dims.x, dims.y, GL_RGBA32F);
+
+                const math::vec2i lower_left  {stroke.selection.start_lower_left};
+                
+                glCopyImageSubData(canvas.texture.id, GL_TEXTURE_2D, 0, lower_left.x, lower_left.y, 0,
+                                   info.selection_texture.id, GL_TEXTURE_2D, 0, 0, 0, 0,
+                                   dims.x, dims.y, 1);
+
+                // clear selected area
+                glTextureSubImage2D(canvas.texture.id, 0,
+                                    stroke.selection.start_lower_left.x, stroke.selection.start_lower_left.y,
+                                    dims.x, dims.y,
+                                    GL_RGBA, GL_FLOAT, pixels.data());
+
+                // move selected sub region to end location
+                math::mat4f selection_model {math::translate(stroke.selection.end_lower_left.x+dims.x/2, stroke.selection.end_lower_left.y+dims.y/2, 0.0f)*
+                                             math::scale(dims.x, dims.y, 1.0f)};
+
+                graphics::bind_vertex_array(canvas_vao); // use this vao for quad as well
+                textured_quad_shader.use_shader();
+                textured_quad_shader.set_mat4("u_mvp", canvas.projection*selection_model);
+                textured_quad_shader.set_int("u_convert_to_srgb", false);
+                graphics::bind_texture_and_sampler(info.selection_texture, sampler_nearest, 0);
+                textured_quad_shader.set_vec3("u_color_multiplier", {1.0f, 1.0f, 1.0f});
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+                continue;
+            }
 
             if (stroke.type == brush_type::BUCKET) {
                 if (bucket_fill(stroke.mp, stroke.color, stroke.bucket_area_percentage)) {
@@ -1195,6 +1257,31 @@ void application::draw()
         }
     }
 
+    if (info.selection_write) {
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        graphics::bind_frame_buffer(canvas.buffer);
+        graphics::set_viewport(0, 0, canvas.width, canvas.height);
+
+        const math::vec2f len {std::abs(info.selection_end_coords.x - info.selection_start_coords.x),
+                               std::abs(info.selection_end_coords.y - info.selection_start_coords.y)};
+
+        math::vec2f lower_left  {std::min(info.selection_start_coords.x, info.selection_end_coords.x),
+                                 std::min(info.selection_start_coords.y, info.selection_end_coords.y)};
+
+        math::mat4f selection_model {math::translate(lower_left.x+len.x/2, lower_left.y+len.y/2, 0.0f)*
+                                     math::scale(len.x, len.y, 1.0f)};
+
+        graphics::bind_vertex_array(canvas_vao); // use this vao for quad as well
+        textured_quad_shader.use_shader();
+        textured_quad_shader.set_mat4("u_mvp", canvas.projection*selection_model);
+        textured_quad_shader.set_int("u_convert_to_srgb", false);
+        graphics::bind_texture_and_sampler(info.selection_texture, sampler_nearest, 0);
+        textured_quad_shader.set_vec3("u_color_multiplier", {1.0f, 1.0f, 1.0f});
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+        info.selection_write = false;
+    }
+
     // render canvas strokes onto separate background texture
     {
         graphics::bind_frame_buffer(final_canvas.buffer);
@@ -1224,7 +1311,7 @@ void application::draw()
             math::vec2f upper_left  {lower_left.x,       lower_left.y+len.y};
             math::vec2f lower_right {lower_left.x+len.x, lower_left.y      };
 
-            if (info.selected && info.selection_copied_to_texture) {
+            if (!info.selection_write && info.selected && info.selection_copied_to_texture) {
                 math::mat4f selection_model {math::translate(lower_left.x+len.x/2, lower_left.y+len.y/2, 0.0f)*
                                              math::scale(len.x, len.y, 1.0f)};
 

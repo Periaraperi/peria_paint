@@ -144,6 +144,8 @@ private:
     draw_region temp_canvas {}; // helper temp canvas for resizing
     draw_region final_canvas {}; // final image + background before we go to screen quad.
 
+    //TODO: strokes don't contain only brush strokes, but every undoable OP.
+    //      change naming in the future
     struct stroke {
         std::vector<math::vec2f> brush_points; // stroke control points
         float aa {};
@@ -152,6 +154,13 @@ private:
         brush_type type;
         math::vec2i mp {}; // use only when type == bucket, this is canvas relative pixel coordinates
         float bucket_area_percentage {0.20f};
+        bool is_selection {false};
+
+        struct selection {
+            math::vec2i start_lower_left {};
+            math::vec2i end_lower_left {};
+            math::vec2i dims {};
+        } selection;
     };
 
     struct history {
@@ -190,6 +199,7 @@ private:
         bool selected {false};
         bool selection_moving {false};
         bool selection_copied_to_texture {false};
+        bool selection_write {false};
         math::vec2f selection_start_coords {}; // relative to canvas. Canvas lower left is (0,0)
         math::vec2f selection_end_coords {};
         gl::texture2d selection_texture;
