@@ -1193,6 +1193,7 @@ void application::draw()
         if (stroke_history.last_stroke_index+1 <= stroke_history.last_valid_redo_index) {
             graphics::bind_frame_buffer(canvas.buffer);
             graphics::set_viewport(0, 0, canvas.width, canvas.height);
+            const auto& [r, g, b] {info.bg_color};
 
             ++stroke_history.last_stroke_index;
             const auto& stroke {stroke_history.strokes[stroke_history.last_stroke_index]};
@@ -1208,7 +1209,43 @@ void application::draw()
                 glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
             }
 
-            if (!filled) {
+            if (stroke.is_selection) {
+                const auto& dims {stroke.selection.dims};
+                std::vector<float> pixels(static_cast<std::size_t>(dims.x*dims.y*4), 0);
+                for (int j{}; j<dims.x*dims.y*4; j += 4) {
+                    pixels[static_cast<std::size_t>(j + 0)] = r;
+                    pixels[static_cast<std::size_t>(j + 1)] = g;
+                    pixels[static_cast<std::size_t>(j + 2)] = b;
+                    pixels[static_cast<std::size_t>(j + 3)] = 0;
+                }
+
+                info.selection_texture = graphics::create_texture2d(dims.x, dims.y, GL_RGBA32F);
+
+                const math::vec2i lower_left  {stroke.selection.start_lower_left};
+                
+                glCopyImageSubData(canvas.texture.id, GL_TEXTURE_2D, 0, lower_left.x, lower_left.y, 0,
+                                   info.selection_texture.id, GL_TEXTURE_2D, 0, 0, 0, 0,
+                                   dims.x, dims.y, 1);
+
+                // clear selected area
+                glTextureSubImage2D(canvas.texture.id, 0,
+                                    stroke.selection.start_lower_left.x, stroke.selection.start_lower_left.y,
+                                    dims.x, dims.y,
+                                    GL_RGBA, GL_FLOAT, pixels.data());
+
+                // move selected sub region to end location
+                math::mat4f selection_model {math::translate(stroke.selection.end_lower_left.x+dims.x/2, stroke.selection.end_lower_left.y+dims.y/2, 0.0f)*
+                                             math::scale(dims.x, dims.y, 1.0f)};
+
+                graphics::bind_vertex_array(canvas_vao); // use this vao for quad as well
+                textured_quad_shader.use_shader();
+                textured_quad_shader.set_mat4("u_mvp", canvas.projection*selection_model);
+                textured_quad_shader.set_int("u_convert_to_srgb", false);
+                graphics::bind_texture_and_sampler(info.selection_texture, sampler_nearest, 0);
+                textured_quad_shader.set_vec3("u_color_multiplier", {1.0f, 1.0f, 1.0f});
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+            }
+            else if (!filled) {
                 if (stroke.brush_points.size() == 1) {
                     render_single_point(stroke);
                 }
