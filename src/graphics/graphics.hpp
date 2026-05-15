@@ -50,6 +50,9 @@ void set_screen_size(int w, int h) noexcept;
 [[nodiscard]] bool is_relative_mouse() noexcept;
 [[nodiscard]] relative_motion get_relative_motion() noexcept;
 
+void set_executable_path(const std::string& path);
+[[nodiscard]] std::string get_executable_path();
+
 // entity bindings
 void bind_frame_buffer_default() noexcept;
 void bind_frame_buffer(const gl::frame_buffer& fbo) noexcept;

@@ -6,3 +6,4 @@ saved/
 .cache/
 src/old
 src/tmp.cpp
+bin/

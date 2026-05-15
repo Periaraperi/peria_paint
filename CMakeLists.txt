@@ -61,3 +61,25 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(${PROJECT_NAME} PRIVATE PERIA_DEBUG)
 endif()
+
+# during build copy res folder
+if (UNIX)
+    set(BUILD_OUT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build/debug)
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        set(BUILD_OUT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build/release)
+    endif()
+endif()
+
+add_custom_command(
+    TARGET peria_paint POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets ${BUILD_OUT_DIR}/assets
+)
+
+#install stuff
+set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_SOURCE_DIR})
+install(TARGETS peria_paint
+        CONFIGURATIONS Release
+        RUNTIME DESTINATION bin)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets/ DESTINATION bin/assets CONFIGURATIONS Release)
+

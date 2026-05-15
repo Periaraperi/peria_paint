@@ -57,6 +57,7 @@ struct graphics_info {
     bool  relative_mouse  {true};
     float mouse_x_rel     {}; // last rel movement
     float mouse_y_rel     {}; // last rel movement
+    std::string executable_path {};
 } graphics_info;
 
 void set_relative_motion(float x, float y) noexcept
@@ -78,6 +79,12 @@ void set_relative_mouse(SDL_Window* window, bool rel_mouse) noexcept
 
 relative_motion get_relative_motion() noexcept
 { return {graphics_info.mouse_x_rel, graphics_info.mouse_y_rel}; }
+
+void set_executable_path(const std::string& path)
+{ graphics_info.executable_path = path; }
+
+std::string get_executable_path()
+{ return graphics_info.executable_path; }
   
 void set_viewport(int x, int y, int w, int h) noexcept
 { glViewport(x, y, w, h); }
@@ -482,7 +489,7 @@ std::string write_to_png(const gl::texture2d& texture, int width, int height, co
         pixels[i*4 + 3] = static_cast<u8>(std::clamp(data[i*4 + 3], 0.0f, 1.0f)*255.0f + 0.5f);
     }
 
-    std::string dir_name {"./saved/"};
+    std::string dir_name {peria::graphics::get_executable_path()+"saved/"};
     std::string file_name {filename};
     if (file_name.empty()) {
         int k {};
@@ -494,7 +501,7 @@ std::string write_to_png(const gl::texture2d& texture, int width, int height, co
             else break;
         }
     }
-    const std::string path {"./saved/"+file_name+".png"};
+    const std::string path {dir_name+file_name+".png"};
     stbi_write_png(path.c_str(), width, height, 4, pixels.data(), width*4*sizeof(u8));
     return file_name;
 }

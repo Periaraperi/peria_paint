@@ -86,6 +86,8 @@ private:
     application_settings app_settings_;
     sdl::sdl_initializer sdl_initializer_;
     imgui::imgui imgui_;
+    std::string exe_path;
+
     void update(float dt);
     void draw();
     void test();

@@ -65,7 +65,8 @@ peria::math::vec2f get_point_on_path(const std::vector<peria::math::vec2f>& poin
 std::vector<std::string> get_all_png_images()
 {
     std::vector<std::string> res;
-    std::filesystem::path p{"./saved/"};
+    std::filesystem::path p{peria::graphics::get_executable_path()+"saved/"};
+    std::println("GETTING {}", p.string());
     std::filesystem::directory_iterator it{p};
     for (const auto& entry:it) {
         if (entry.is_regular_file()) {
@@ -145,6 +146,8 @@ sdl_initializer::sdl_initializer(const application_settings& settings) noexcept
         return;
     }
 
+    graphics::set_executable_path(std::string{SDL_GetBasePath()});
+
     std::println("Successfully initialized SDL, SDL_Window, SDL_GLContext, and GLAD");
 };
 
@@ -194,11 +197,12 @@ application::application(application_settings&& settings)
     :app_settings_{std::move(settings)},
      sdl_initializer_{app_settings_},
      imgui_{sdl_initializer_.window, sdl_initializer_.context, "#version 460"},
-     circle_shader{"./assets/shaders/circle.vert", "./assets/shaders/circle.frag"},
-     circle_batcher_shader{"./assets/shaders/circle_batcher.vert", "./assets/shaders/circle_batcher.frag"},
-     colored_quad_shader{"./assets/shaders/quad_colored.vert", "./assets/shaders/quad_colored.frag"},
-     textured_quad_shader{"./assets/shaders/quad.vert", "./assets/shaders/quad.frag"},
-     line_shader{"./assets/shaders/line.vert", "./assets/shaders/line.frag"},
+     exe_path{graphics::get_executable_path()},
+     circle_shader{exe_path+"assets/shaders/circle.vert", exe_path+"assets/shaders/circle.frag"},
+     circle_batcher_shader{exe_path+"assets/shaders/circle_batcher.vert", exe_path+"assets/shaders/circle_batcher.frag"},
+     colored_quad_shader{exe_path+"assets/shaders/quad_colored.vert", exe_path+"assets/shaders/quad_colored.frag"},
+     textured_quad_shader{exe_path+"assets/shaders/quad.vert", exe_path+"assets/shaders/quad.frag"},
+     line_shader{exe_path+"assets/shaders/line.vert", exe_path+"assets/shaders/line.frag"},
      sampler_linear{graphics::create_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, 
      sampler_nearest{graphics::create_sampler(GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER)}, 
      canvas_bg{gl::texture2d{graphics::create_texture2d_from_color(graphics::WHITE)}},
@@ -216,6 +220,7 @@ application::application(application_settings&& settings)
 {
     if (!sdl_initializer_.initialized) return;
     std::println("application construction");
+    std::println("EXECUTABLE PATH {}", exe_path);
 
     // initialize batchers
     {
@@ -347,8 +352,8 @@ application::application(application_settings&& settings)
     graphics::clear_buffer_color(canvas.buffer.id, graphics::color{r, g, b, 0.0f});
 
     stroke_history.strokes.emplace_back();
-    if (!std::filesystem::exists(std::filesystem::path{"saved"})) {
-        std::filesystem::create_directory(std::filesystem::path{"saved"});
+    if (!std::filesystem::exists(std::filesystem::path{exe_path+"saved"})) {
+        std::filesystem::create_directory(std::filesystem::path{exe_path+"saved"});
     }
 }
 
@@ -427,7 +432,7 @@ void application::run()
                 const auto files {get_all_png_images()};
                 for (const auto& f:files) {
                     if (ImGui::MenuItem(f.c_str())) {
-                        auto image {graphics::load_png(("./saved/"+f).c_str())};
+                        auto image {graphics::load_png((exe_path+"saved/"+f).c_str())};
 
                         canvas.texture = std::move(image.texture);
                         canvas.width = image.width;
